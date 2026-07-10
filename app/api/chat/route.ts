@@ -6,7 +6,7 @@ interface ChatBody {
 }
 
 function fallbackAnswer(): string {
-  return "OpenAI API key belum terhubung. Tambahkan OPENAI_API_KEY di Vercel → Settings → Environment Variables, lalu Redeploy.";
+  return "OpenAI API key belum terhubung. Tambahkan OPENAI_API_KEY di Vercel Settings → Environment Variables, lalu Redeploy.";
 }
 
 export async function POST(req: Request) {
@@ -17,13 +17,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply: fallbackAnswer() });
   }
 
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini"; // gpt-4o-mini paling hemat
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
   const systemPrompt = `You are Noctrun AI, a crypto market-intelligence assistant embedded in a dark terminal-style dashboard.
 You are given a live JSON snapshot of current signals: pump candidates, rugpull risk scores, whale activity, funding rates, and fear & greed index.
-Answer the user's question using ONLY that data — do not hallucinate prices or events outside the snapshot.
-Be concise, direct, and use plain language. Always make clear these are data-driven signals, not predictions.
-Nothing you say is financial advice.`;
+Answer the user's question using ONLY that data. Be concise and direct. Always clarify these are signals, not predictions. Nothing here is financial advice.`;
 
   const userContent = `Live market snapshot:\n${JSON.stringify(body.context ?? {}).slice(0, 6000)}\n\nUser question: ${body.message}`;
 
@@ -54,6 +52,6 @@ Nothing you say is financial advice.`;
     const text = data.choices?.[0]?.message?.content ?? "";
     return NextResponse.json({ reply: text || fallbackAnswer() });
   } catch {
-    return NextResponse.json({ reply: fallbackAnswer(body.context) });
+    return NextResponse.json({ reply: fallbackAnswer() });
   }
 }
