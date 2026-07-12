@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-image: radial-gradient(circle at 20% -10%, rgba(110, 91, 255, 0.1), transparent 40%),
+    radial-gradient(circle at 90% 10%, rgba(255, 176, 32, 0.05), transparent 35%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(110, 91, 255, 0.35);
+}
+
+/* thin, terminal-appropriate scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #23262f transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #23262f;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.panel {
+  @apply bg-bg-surface border border-line rounded-lg;
+}
+
+.mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+}
