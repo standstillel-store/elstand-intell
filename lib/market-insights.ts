@@ -115,4 +115,4 @@ export function computeSystemTagline(fngValue: number | undefined, riskCount: nu
   if (riskCount >= 8) return "Elevated Risk Signals Across Market";
   if (pumpCount >= 8) return "Momentum Broadening Across Alts";
   return "Market Steady, Signals Normal";
-}
+                                 }
