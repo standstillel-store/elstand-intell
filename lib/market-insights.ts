@@ -3,7 +3,7 @@ import type { CoinMarket, EconomicEvent, RugpullRisk, WhaleTransfer } from "./ty
 
 // ---------------------------------------------------------------------------
 // Small, transparent derived-signal helpers for the mobile Home dashboard.
-// Every function below is a pure re-read of data Nocturn already fetches in
+// Every function below is a pure re-read of data ElVoid AI already fetches in
 // getSnapshot() — no new API calls, no invented numbers. Same "show your
 // work" spirit as lib/scoring.ts: if a number appears on screen, you can
 // trace exactly where it came from.
@@ -18,7 +18,7 @@ export interface AltseasonReading {
 /**
  * Adapts the well-known "Altcoin Season Index" methodology (percentage of
  * top coins that outperformed BTC over a trailing window) to the 7d change
- * field Nocturn already has on hand. Excludes BTC, stablecoins, and wrapped
+ * field ElVoid AI already has on hand. Excludes BTC, stablecoins, and wrapped
  * assets. Markets are assumed pre-sorted by market cap desc (CoinGecko
  * default), so slicing the first 50 after filtering approximates "top 50
  * alts by market cap".

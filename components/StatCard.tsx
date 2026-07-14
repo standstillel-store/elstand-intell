@@ -15,7 +15,7 @@ export function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="panel p-4">
+    <div className="glow-card p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] uppercase tracking-wide text-ink-faint">{label}</span>
         {Icon && <Icon size={14} className="text-ink-faint" />}

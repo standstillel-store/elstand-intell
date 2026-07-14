@@ -31,9 +31,9 @@ export function NewsFeedView({ news }: { news: NewsItem[] }) {
         <span className="ml-auto text-xs text-ink-faint">{filtered.length} berita</span>
       </div>
 
-      {!filtered.length && <div className="panel p-6 text-center text-sm text-ink-muted">Tidak ada berita untuk filter ini.</div>}
+      {!filtered.length && <div className="glow-card p-6 text-center text-sm text-ink-muted">Tidak ada berita untuk filter ini.</div>}
 
-      <div className="panel divide-y divide-line p-0">
+      <div className="glow-card divide-y divide-line p-0">
         {filtered.map((n) => (
           <a
             key={n.id}

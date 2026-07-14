@@ -2,7 +2,7 @@ import { cached } from "./cache";
 import type { WhaleTransfer } from "./types";
 
 // Starter watchlist of major ERC-20 contracts to monitor for large moves.
-// Add any token you want Nocturn to watch on Ethereum mainnet here.
+// Add any token you want ElVoid AI to watch on Ethereum mainnet here.
 const WATCHLIST: Record<string, string> = {
   WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",

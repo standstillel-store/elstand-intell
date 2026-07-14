@@ -1,18 +1,21 @@
 import { AppShell } from "@/components/AppShell";
-import { JournalView } from "@/components/ai-journal/JournalView";
+import { JournalTabs } from "@/components/ai-journal/JournalTabs";
 import { Disclaimer } from "@/components/Disclaimer";
-import { getJournalEntries } from "@/lib/elvoid/performance";
+import { getJournalEntries, getPerformanceReport } from "@/lib/elvoid/performance";
 
 export const metadata = {
-  title: "AI Journal | Nocturn",
+  title: "AI Journal | ELSTAND INTELLIGENCE",
 };
 
 export default async function AiJournalPage() {
-  const entries = await getJournalEntries(200);
+  const [entries, report] = await Promise.all([getJournalEntries(200), getPerformanceReport()]);
   return (
-    <AppShell title="AI Journal" subtitle="Riwayat setiap paper trade yang sudah ditutup, lengkap dengan alasan sinyal aslinya.">
+    <AppShell
+      title="AI Journal"
+      subtitle="Riwayat setiap paper trade yang sudah ditutup, statistik performa, dan alasan sinyal aslinya."
+    >
       <Disclaimer />
-      <JournalView entries={entries} />
+      <JournalTabs entries={entries} report={report} />
     </AppShell>
   );
 }

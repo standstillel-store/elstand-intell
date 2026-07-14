@@ -45,10 +45,12 @@ export async function buildSignalForSymbol(symbol: string, ctx: ScanContext): Pr
   const currentPrice = market?.current_price ?? ctx.priceBySymbol[sym.toLowerCase()];
   if (!currentPrice) return null;
 
-  const candles = await getKlines(sym, "4h", 200).catch(() => []);
+  const timeframe = "4h";
+  const candles = await getKlines(sym, timeframe, 200).catch(() => []);
   if (candles.length < 30) return null;
 
   const funding = ctx.funding.find((f) => f.symbol.toUpperCase() === `${sym}USDT`);
+  const btc = sym === "BTC" ? undefined : ctx.markets.find((m) => m.symbol.toUpperCase() === "BTC");
 
   return generateSignal({
     symbol: sym,
@@ -61,6 +63,10 @@ export async function buildSignalForSymbol(symbol: string, ctx: ScanContext): Pr
     funding,
     riskPercent: ctx.riskPercent,
     calibration: ctx.calibration,
+    timeframe,
+    change24h: market?.price_change_percentage_24h_in_currency,
+    btcChange24h: btc?.price_change_percentage_24h_in_currency,
+    btcChange7d: btc?.price_change_percentage_7d_in_currency,
   });
 }
 

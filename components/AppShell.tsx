@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
+import { TopNav } from "./layout/TopNav";
 import { NavDrawer } from "./mobile/NavDrawer";
 import { Footer } from "./Footer";
 import { AIChatDock } from "./AIChatDock";
@@ -16,7 +17,8 @@ export function AppShell({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen lg:flex">
+    <div className="min-h-screen lg:flex lg:pt-14">
+      <TopNav />
       <Sidebar />
 
       <div className="flex-1 lg:pl-60">
@@ -27,7 +29,7 @@ export function AppShell({
         </div>
 
         {/* Desktop header */}
-        <div className="sticky top-0 z-20 hidden border-b border-line bg-bg/90 px-6 py-4 backdrop-blur lg:block">
+        <div className="sticky top-14 z-20 hidden border-b border-line bg-bg/90 px-6 py-4 backdrop-blur lg:block">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-bold tracking-tight">{title}</h1>

@@ -61,7 +61,7 @@ export async function getJournalEntries(limit = 200): Promise<JournalWithSignal[
   if (!sb) return [];
   const { data, error } = await sb
     .from("ai_journal")
-    .select("*, signal:ai_signals(coin,side,strategy,confidence,entry,reason)")
+    .select("*, signal:ai_signals(coin,side,strategy,confidence,entry,reason,timeframe)")
     .order("closed_at", { ascending: false })
     .limit(limit);
   if (error) {

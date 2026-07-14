@@ -338,3 +338,203 @@ export function scanRiskAssessment(args: {
 
   return { level, confidencePenalty: Math.min(20, penalty), detail: notes.join(" ") };
 }
+
+// ---------------------------------------------------------------------------
+// Extended AI Reasoning scanners (2026-07 UI redesign)
+// ---------------------------------------------------------------------------
+// These 5 are intentionally kept OUT of the confidence-weighted vote above —
+// engine.ts's base 28 + corroborating*7 math was calibrated against the
+// original 9 scanners, and changing that denominator would silently shift
+// every historical Confidence number. Instead these feed a separate
+// `extraReasoning` array purely for the AI Reasoning checklist UI: same
+// transparent, rule-based philosophy, just presentational rather than
+// vote-affecting. See lib/elvoid/engine.ts.
+
+function shortUsd(n: number): string {
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+/**
+ * Fair Value Gap (ICT): a 3-candle imbalance where candle[i-2] and candle[i]
+ * don't overlap. Scans the most recent ~18 candles for the latest gap that
+ * hasn't since been "mitigated" (price hasn't traded back into it).
+ */
+export function scanFairValueGap(candles: Candle[]): ScanResult {
+  const n = candles.length;
+  if (n < 20) return res("fair_value_gap", "Fair Value Gap", "neutral", 0, "Data candle belum cukup untuk mendeteksi Fair Value Gap.");
+
+  for (let i = n - 3; i >= Math.max(2, n - 18); i--) {
+    const left = candles[i - 2];
+    const right = candles[i];
+    const later = candles.slice(i + 1);
+
+    if (left.high < right.low) {
+      const stillOpen = !later.some((c) => c.low <= right.low && c.low >= left.high);
+      if (stillOpen) {
+        return res(
+          "fair_value_gap",
+          "Fair Value Gap",
+          "bullish",
+          9,
+          `FVG bullish belum termitigasi di area ${left.high.toFixed(4)}–${right.low.toFixed(4)}.`
+        );
+      }
+    }
+    if (left.low > right.high) {
+      const stillOpen = !later.some((c) => c.high >= right.high && c.high <= left.low);
+      if (stillOpen) {
+        return res(
+          "fair_value_gap",
+          "Fair Value Gap",
+          "bearish",
+          9,
+          `FVG bearish belum termitigasi di area ${right.high.toFixed(4)}–${left.low.toFixed(4)}.`
+        );
+      }
+    }
+  }
+  return res("fair_value_gap", "Fair Value Gap", "neutral", 0, "Tidak ada Fair Value Gap terbuka yang signifikan saat ini.");
+}
+
+/**
+ * Order Block (simplified ICT read): finds the single most impulsive candle
+ * in the last 15 bars, then checks whether the opposite-colored candle right
+ * before it — the "order block" — is near the current price (i.e. price has
+ * returned to that zone, the classic re-entry read).
+ */
+export function scanOrderBlock(candles: Candle[]): ScanResult {
+  const n = candles.length;
+  if (n < 16) return res("order_block", "Order Block", "neutral", 0, "Data candle belum cukup untuk mendeteksi Order Block.");
+
+  const window = candles.slice(-15);
+  const avgRange = window.reduce((s, c) => s + (c.high - c.low), 0) / window.length || 1e-9;
+
+  let bestIdx = -1;
+  let bestBody = 0;
+  for (let i = 1; i < window.length; i++) {
+    const body = Math.abs(window[i].close - window[i].open);
+    if (body > bestBody) {
+      bestBody = body;
+      bestIdx = i;
+    }
+  }
+  if (bestIdx < 1 || bestBody < avgRange * 1.3) {
+    return res("order_block", "Order Block", "neutral", 0, "Belum ada impulsive move yang cukup kuat untuk menandai Order Block.");
+  }
+
+  const impulse = window[bestIdx];
+  const prior = window[bestIdx - 1];
+  const currentPrice = candles[n - 1].close;
+  const impulseBullish = impulse.close > impulse.open;
+  const priorBearish = prior.close < prior.open;
+  const priorBullish = prior.close > prior.open;
+
+  if (impulseBullish && priorBearish) {
+    const obLow = prior.low;
+    const obHigh = prior.open;
+    const near = currentPrice <= obHigh * 1.01 && currentPrice >= obLow * 0.99;
+    return res(
+      "order_block",
+      "Order Block",
+      "bullish",
+      near ? 10 : 5,
+      near
+        ? `Harga kembali menguji Bullish Order Block (${obLow.toFixed(4)}–${obHigh.toFixed(4)}).`
+        : `Bullish Order Block teridentifikasi di ${obLow.toFixed(4)}–${obHigh.toFixed(4)}, harga belum kembali ke area ini.`
+    );
+  }
+  if (!impulseBullish && priorBullish) {
+    const obLow = prior.open;
+    const obHigh = prior.high;
+    const near = currentPrice <= obHigh * 1.01 && currentPrice >= obLow * 0.99;
+    return res(
+      "order_block",
+      "Order Block",
+      "bearish",
+      near ? 10 : 5,
+      near
+        ? `Harga kembali menguji Bearish Order Block (${obLow.toFixed(4)}–${obHigh.toFixed(4)}).`
+        : `Bearish Order Block teridentifikasi di ${obLow.toFixed(4)}–${obHigh.toFixed(4)}, harga belum kembali ke area ini.`
+    );
+  }
+  return res("order_block", "Order Block", "neutral", 0, "Order Block terakhir tidak searah dengan candle impulsive saat ini.");
+}
+
+/** Funding, surfaced as its own explicit AI Reasoning line (also folded into Risk Assessment above). */
+export function scanFundingRate(funding?: FundingInfo): ScanResult {
+  if (!funding) return res("funding_rate", "Funding", "neutral", 0, "Data funding rate tidak tersedia untuk pair ini.");
+  const pct = (funding.lastFundingRate * 100).toFixed(4);
+  if (funding.lastFundingRate < -0.0005) {
+    return res("funding_rate", "Funding", "bullish", 8, `Funding rate negatif (${pct}%) — short membayar long, berpotensi short squeeze.`);
+  }
+  if (funding.lastFundingRate > 0.0015) {
+    return res("funding_rate", "Funding", "bearish", 6, `Funding rate crowded positif (${pct}%) — long membayar premium, rawan long squeeze.`);
+  }
+  return res("funding_rate", "Funding", "neutral", 0, `Funding rate netral (${pct}%).`);
+}
+
+/**
+ * Open Interest — honest by design: only a single snapshot value is
+ * available (no OI history), so this never claims OI is "rising" or
+ * "falling". It only flags when a large OI figure lines up with the
+ * direction price already moved, i.e. positioning size that's consistent
+ * with the move rather than fighting it.
+ */
+export function scanOpenInterest(funding?: FundingInfo, change24h?: number): ScanResult {
+  if (!funding?.openInterestValue) {
+    return res("open_interest", "Open Interest", "neutral", 0, "Data open interest tidak tersedia untuk pair ini.");
+  }
+  const oiUsd = funding.openInterestValue;
+  const chg = change24h ?? 0;
+  if (oiUsd > 50_000_000 && chg > 2) {
+    return res("open_interest", "Open Interest", "bullish", 7, `Open interest besar (${shortUsd(oiUsd)}) selaras dengan kenaikan harga.`);
+  }
+  if (oiUsd > 50_000_000 && chg < -2) {
+    return res("open_interest", "Open Interest", "bearish", 7, `Open interest besar (${shortUsd(oiUsd)}) selaras dengan penurunan harga.`);
+  }
+  return res("open_interest", "Open Interest", "neutral", 0, `Open interest ${shortUsd(oiUsd)}, belum menunjukkan bias kuat.`);
+}
+
+/**
+ * SMT (Smart Money Divergence) — simplified proxy: compares this asset's
+ * 24h read against BTC's own 24h/7d trend instead of a full cross-pair
+ * swing-structure comparison (that would need BTC's candle series threaded
+ * through the whole engine). Labeled clearly so it's never mistaken for
+ * more precision than it has.
+ */
+export function scanSmtDivergence(params: {
+  symbolChange24h?: number;
+  btcChange24h?: number;
+  btcChange7d?: number;
+}): ScanResult {
+  const { symbolChange24h, btcChange24h, btcChange7d } = params;
+  if (symbolChange24h === undefined || btcChange24h === undefined || btcChange7d === undefined) {
+    return res("smt_divergence", "SMT (Smart Money Divergence)", "neutral", 0, "Data BTC pembanding tidak tersedia untuk membaca SMT.");
+  }
+  const btcStillStrong = btcChange7d > 0 && btcChange24h > -1;
+  const symbolFading = symbolChange24h < -2 && symbolChange24h < btcChange24h - 3;
+  if (btcStillStrong && symbolFading) {
+    return res(
+      "smt_divergence",
+      "SMT (Smart Money Divergence)",
+      "bearish",
+      7,
+      "BTC masih kuat namun aset ini melemah lebih dulu — indikasi divergensi distribusi."
+    );
+  }
+  const btcStillWeak = btcChange7d < 0 && btcChange24h < 1;
+  const symbolLeading = symbolChange24h > 2 && symbolChange24h > btcChange24h + 3;
+  if (btcStillWeak && symbolLeading) {
+    return res(
+      "smt_divergence",
+      "SMT (Smart Money Divergence)",
+      "bullish",
+      7,
+      "BTC masih tertekan namun aset ini menguat lebih dulu — indikasi divergensi akumulasi."
+    );
+  }
+  return res("smt_divergence", "SMT (Smart Money Divergence)", "neutral", 0, "Tidak ada divergensi signifikan terhadap BTC saat ini.");
+}

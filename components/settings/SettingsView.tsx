@@ -7,6 +7,7 @@ interface Status {
   supabase: boolean;
   alchemy: boolean;
   newsapi: boolean;
+  fred: boolean;
 }
 
 export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) {
@@ -72,7 +73,7 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
 
   return (
     <div className="space-y-5">
-      <div className="panel p-4">
+      <div className="glow-card p-4">
         <h2 className="text-sm font-semibold">Paper Wallet</h2>
         <p className="mt-1 text-xs text-ink-muted">Risk per trade menentukan besar posisi setiap sinyal yang dieksekusi.</p>
 
@@ -125,15 +126,16 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
         </div>
       </div>
 
-      <div className="panel p-4">
+      <div className="glow-card p-4">
         <h2 className="text-sm font-semibold">Status Integrasi</h2>
         <p className="mt-1 text-xs text-ink-muted">Status koneksi sumber data — tidak menampilkan key apapun.</p>
         <div className="mt-3 space-y-2">
           {(
             [
-              { key: "supabase", label: "Supabase (persistensi Paper Trader)" },
+              { key: "supabase", label: "Supabase (persistensi Paper Trader & AI Journal)" },
               { key: "alchemy", label: "Alchemy (whale feed)" },
               { key: "newsapi", label: "NewsAPI (news feed)" },
+              { key: "fred", label: "FRED (DXY proxy & M2 money supply)" },
             ] as const
           ).map((item) => {
             const ok = status ? status[item.key] : undefined;
@@ -154,12 +156,26 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
               </div>
             );
           })}
+          <div className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-sm">
+            <span>DefiLlama (stablecoin supply)</span>
+            <span className="flex items-center gap-1 text-xs text-up">
+              <Check size={13} /> Tidak perlu API key
+            </span>
+          </div>
         </div>
         {status && !status.supabase && (
           <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
             Tambahkan <code className="rounded bg-bg-raised px-1 py-0.5">NEXT_PUBLIC_SUPABASE_URL</code> dan{" "}
             <code className="rounded bg-bg-raised px-1 py-0.5">SUPABASE_SERVICE_ROLE_KEY</code> di .env.local, lalu jalankan{" "}
-            <code className="rounded bg-bg-raised px-1 py-0.5">supabase/schema.sql</code> di Supabase SQL editor.
+            <code className="rounded bg-bg-raised px-1 py-0.5">supabase/schema.sql</code> di Supabase SQL editor. Buat juga
+            Storage bucket <code className="rounded bg-bg-raised px-1 py-0.5">trade-screenshots</code> (public) untuk fitur
+            screenshot di AI Journal.
+          </p>
+        )}
+        {status && !status.fred && (
+          <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
+            Kartu DXY dan M2 di dashboard butuh <code className="rounded bg-bg-raised px-1 py-0.5">FRED_API_KEY</code> gratis
+            dari fred.stlouisfed.org. DXY di sini adalah proxy Broad USD Index (FRED: DTWEXBGS), bukan ticker ICE DXY asli.
           </p>
         )}
       </div>

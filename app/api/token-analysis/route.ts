@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     const report = getCoinReportData(q, snapshot);
     return NextResponse.json(report);
   } catch (err) {
-    console.error("[Nocturn] token-analysis error:", err);
+    console.error("[ElVoid AI] token-analysis error:", err);
     return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
   }
 }

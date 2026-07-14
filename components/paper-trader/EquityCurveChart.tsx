@@ -8,7 +8,7 @@ export function EquityCurveChart({ points }: { points: EquityPoint[] }) {
 
   if (points.length < 2) {
     return (
-      <div className="panel p-4">
+      <div className="glow-card p-4">
         <SectionHeader code="EQC" title="Equity Curve" hint="% dari starting balance" />
         <p className="py-8 text-center text-sm text-ink-muted">
           Belum ada cukup trade yang ditutup untuk menggambar equity curve.
@@ -34,7 +34,7 @@ export function EquityCurveChart({ points }: { points: EquityPoint[] }) {
   const positive = last >= 0;
 
   return (
-    <div className="panel p-4">
+    <div className="glow-card p-4">
       <SectionHeader code="EQC" title="Equity Curve" hint={`${positive ? "+" : ""}${last.toFixed(2)}% kumulatif`} />
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
         <line x1={PAD} y1={zeroY} x2={W - PAD} y2={zeroY} stroke="#23262F" strokeWidth="1" strokeDasharray="4 4" />

@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // the paper wallet to Supabase (see supabase/schema.sql). Every caller in
 // lib/elvoid/* checks getSupabase() for null first and degrades to an empty
 // list / default value instead of throwing — same "everything degrades
-// gracefully" rule the rest of Nocturn's data sources already follow (see
+// gracefully" rule the rest of ElVoid AI's data sources already follow (see
 // lib/alchemy.ts, lib/newsapi.ts). Until the two env vars below are set,
 // Paper Trader still renders and generates signals, it just can't remember
 // anything between requests.

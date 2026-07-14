@@ -18,21 +18,22 @@ export function OpenTradesTable({
   closingId: string | null;
 }) {
   return (
-    <div className="panel p-4">
+    <div className="glow-card p-4">
       <SectionHeader code="OPN" title="Open Trades" hint={`${signals.length} posisi berjalan`} />
       {!signals.length && <p className="py-6 text-center text-sm text-ink-muted">Tidak ada posisi terbuka saat ini.</p>}
       {signals.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wide text-ink-faint">
                 <th className="pb-2 pr-3 font-medium">Tanggal</th>
                 <th className="pb-2 pr-3 font-medium">Coin</th>
                 <th className="pb-2 pr-3 font-medium">Side</th>
+                <th className="pb-2 pr-3 font-medium">TF</th>
                 <th className="pb-2 pr-3 font-medium">Entry</th>
                 <th className="pb-2 pr-3 font-medium">Live</th>
                 <th className="pb-2 pr-3 font-medium">SL</th>
-                <th className="pb-2 pr-3 font-medium">TP1 / TP2</th>
+                <th className="pb-2 pr-3 font-medium">TP1 / TP2 / TP3</th>
                 <th className="pb-2 pr-3 font-medium">Status</th>
                 <th className="pb-2 pr-3 font-medium">Unrealized</th>
                 <th className="pb-2 font-medium"></th>
@@ -51,11 +52,12 @@ export function OpenTradesTable({
                     <td className="py-2.5 pr-3">
                       <span className={`mono-num text-xs font-medium ${s.side === "LONG" ? "text-up" : "text-down"}`}>{s.side}</span>
                     </td>
+                    <td className="mono-num py-2.5 pr-3 text-xs text-ink-faint">{s.timeframe}</td>
                     <td className="mono-num py-2.5 pr-3 text-xs">{formatUsd(s.entry)}</td>
                     <td className="mono-num py-2.5 pr-3 text-xs">{live ? formatUsd(live) : "—"}</td>
                     <td className="mono-num py-2.5 pr-3 text-xs text-ink-muted">{formatUsd(effectiveSl)}</td>
                     <td className="mono-num py-2.5 pr-3 text-xs text-ink-muted">
-                      {formatUsd(s.tp1)} / {formatUsd(s.tp2)}
+                      {formatUsd(s.tp1)} / {formatUsd(s.tp2)} {s.tp3 ? `/ ${formatUsd(s.tp3)}` : ""}
                     </td>
                     <td className="py-2.5 pr-3 text-xs text-ink-muted">
                       {s.status === "tp1_hit" ? "TP1 hit · SL@BE" : "Open"}

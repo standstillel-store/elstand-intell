@@ -6,9 +6,9 @@ interface ChatBody {
   message: string;
 }
 
-// Nocturn's chat dock (ElVoid AI) used to proxy every question to the
+// ELSTAND INTELLIGENCE's chat dock (ElVoid AI) used to proxy every question to the
 // OpenAI API, which costs real money per request. It now runs entirely on
-// Nocturn's own rule-based Intelligence Engine (lib/analysis.ts): live data
+// ElVoid AI's own rule-based Intelligence Engine (lib/analysis.ts): live data
 // in, structured signal interpretation out — no LLM call, no API key, no
 // cost, ever.
 export async function POST(req: Request) {
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     const reply = routeMessage(message, snapshot);
     return NextResponse.json({ reply });
   } catch (err) {
-    console.error("[Nocturn] chat engine error:", err);
+    console.error("[ElVoid AI] chat engine error:", err);
     return NextResponse.json({
       reply: "Data live sedang tidak bisa diambil sebentar — coba lagi dalam beberapa detik.",
     });

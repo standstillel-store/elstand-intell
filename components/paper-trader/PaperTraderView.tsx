@@ -136,7 +136,7 @@ export function PaperTraderView() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
         <StatCard label="Virtual Balance" value={formatUsd(wallet?.balance ?? 10000)} />
         <StatCard label="Equity" value={formatUsd(wallet?.equity ?? 10000)} />
         <StatCard
@@ -147,6 +147,8 @@ export function PaperTraderView() {
         <StatCard label="Win Rate" value={`${(stats?.win_rate ?? 0).toFixed(1)}%`} />
         <StatCard label="Profit Factor" value={(stats?.profit_factor ?? 0).toFixed(2)} />
         <StatCard label="Average RR" value={`${(stats?.average_rr ?? 0).toFixed(2)}R`} />
+        <StatCard label="Max Drawdown" value={`${(stats?.max_drawdown ?? 0).toFixed(2)}%`} tone={(stats?.max_drawdown ?? 0) > 0 ? "down" : "neutral"} />
+        <StatCard label="Total Trade" value={`${stats?.total_trade ?? 0}`} hint={stats ? `${stats.wins}W · ${stats.losses}L` : undefined} />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -162,7 +164,7 @@ export function PaperTraderView() {
         closingId={closingId}
       />
 
-      <ClosedTradesTable entries={state.closedEntries} />
+      <ClosedTradesTable entries={state.closedEntries} onRefresh={loadAll} />
 
       {stats && stats.total_trade > 0 && (
         <p className="text-center text-[11px] text-ink-faint">

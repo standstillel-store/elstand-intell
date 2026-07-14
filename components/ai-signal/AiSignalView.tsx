@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Search, Radar, Loader2 } from "lucide-react";
 import clsx from "clsx";
-import { SignalCard } from "./SignalCard";
+import { SignalCardPro } from "@/components/ai-signal-pro/SignalCardPro";
 import { Disclaimer } from "@/components/Disclaimer";
+import { SkeletonGrid } from "@/components/ui/Skeleton";
 import type { AiSignal } from "@/lib/elvoid/types";
 
 type Filter = "all" | "long" | "short" | "high";
@@ -154,11 +155,11 @@ export function AiSignalView() {
       </div>
 
       {loading ? (
-        <p className="py-10 text-center text-sm text-ink-muted">Memuat sinyal…</p>
+        <SkeletonGrid count={4} className="sm:grid-cols-1 xl:grid-cols-2" />
       ) : filtered.length ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {filtered.map((s) => (
-            <SignalCard key={s.id} signal={s} onExecute={handleExecute} executing={executingId === s.id} />
+            <SignalCardPro key={s.id} signal={s} onExecute={() => handleExecute(s)} executing={executingId === s.id} />
           ))}
         </div>
       ) : (

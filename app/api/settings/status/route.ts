@@ -6,5 +6,6 @@ export async function GET() {
     supabase: isSupabaseConfigured(),
     alchemy: Boolean(process.env.ALCHEMY_API_KEY),
     newsapi: Boolean(process.env.NEWSAPI_KEY),
+    fred: Boolean(process.env.FRED_API_KEY),
   });
 }

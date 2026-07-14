@@ -12,6 +12,11 @@ import {
   scanNewsSentiment,
   scanMarketStructure,
   scanRiskAssessment,
+  scanFairValueGap,
+  scanOrderBlock,
+  scanFundingRate,
+  scanOpenInterest,
+  scanSmtDivergence,
 } from "./scanners";
 
 // ---------------------------------------------------------------------------
@@ -31,11 +36,15 @@ export interface GeneratedSignal {
   sl: number;
   tp1: number;
   tp2: number;
+  tp3: number;
+  timeframe: string;
   confidence: number;
   risk_percent: number;
   reason: string;
   strategy: string;
   scans: ScanResult[];
+  /** Presentational-only extras (FVG, Order Block, Funding, Open Interest, SMT) — see scanners.ts note. Never affects side/entry/sl/tp/confidence. */
+  extraReasoning: ScanResult[];
   riskLevel: "low" | "medium" | "high";
 }
 
@@ -89,8 +98,27 @@ export function generateSignal(params: {
   name?: string;
   riskPercent?: number;
   calibration?: StrategyCalibration[];
+  timeframe?: string;
+  change24h?: number;
+  btcChange24h?: number;
+  btcChange7d?: number;
 }): GeneratedSignal | null {
-  const { symbol, currentPrice, candles, whales, news, calendar, funding, name, riskPercent = 1, calibration = [] } = params;
+  const {
+    symbol,
+    currentPrice,
+    candles,
+    whales,
+    news,
+    calendar,
+    funding,
+    name,
+    riskPercent = 1,
+    calibration = [],
+    timeframe = "4h",
+    change24h,
+    btcChange24h,
+    btcChange7d,
+  } = params;
   if (candles.length < 30 || !currentPrice) return null;
 
   // --- Shared indicators, computed once and handed to every scanner -------
@@ -150,14 +178,29 @@ export function generateSignal(params: {
   const tp2Dist = tp2Candidate ? tp2Candidate.dist : Math.max(rawTp2Dist, tp1Dist * 1.6);
   const tp2 = entry + dir * tp2Dist;
 
+  // --- TP3: the furthest opposing liquidity level beyond TP2, falling back to a fixed 4.25R runner target ---
+  const rawTp3Dist = riskDistance * 4.25;
+  const tp3Candidate = opposingLevels.find((l) => l.dist > tp2Dist * 1.15);
+  const tp3Dist = tp3Candidate ? tp3Candidate.dist : Math.max(rawTp3Dist, tp2Dist * 1.5);
+  const tp3 = entry + dir * tp3Dist;
+
   // --- 10: Risk Assessment (confidence modifier, not a directional vote) ---
   const risk = scanRiskAssessment({ entry, sl, tp1, atr: lastAtr, currentPrice, calendar, funding });
+
+  // --- Extended, presentational-only reasoning (does not affect side/confidence) ---
+  const extraReasoning: ScanResult[] = [
+    scanFairValueGap(candles),
+    scanOrderBlock(candles),
+    scanFundingRate(funding),
+    scanOpenInterest(funding, change24h),
+    scanSmtDivergence({ symbolChange24h: change24h, btcChange24h, btcChange7d }),
+  ];
 
   const strategy = classifyStrategy(directional, side);
   const calibAdj = calibrationAdjustment(strategy, calibration);
   const baseConfidence = 28 + corroborating * 7;
   // Confidence never claims certainty — capped well short of 100, same rule
-  // the rest of Nocturn's scoring engine follows.
+  // the rest of ElVoid AI's scoring engine follows.
   const confidence = Math.max(8, Math.min(92, Math.round(baseConfidence + calibAdj - risk.confidencePenalty)));
 
   const topReasons = directional
@@ -180,11 +223,14 @@ export function generateSignal(params: {
     sl: roundPrice(sl),
     tp1: roundPrice(tp1),
     tp2: roundPrice(tp2),
+    tp3: roundPrice(tp3),
+    timeframe,
     confidence,
     risk_percent: riskPercent,
     reason: reasonLines.join(" "),
     strategy,
     scans: directional,
+    extraReasoning,
     riskLevel: risk.level,
   };
 }

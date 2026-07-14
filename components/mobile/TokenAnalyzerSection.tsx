@@ -81,7 +81,7 @@ export function TokenAnalyzerSection() {
 
       {report && !report.found && (
         <p className="mt-3 text-sm text-ink-muted">
-          Tidak menemukan &quot;{report.query}&quot; di 150 coin teratas yang Nocturn pantau. Coba simbol lain.
+          Tidak menemukan &quot;{report.query}&quot; di 150 coin teratas yang ElVoid AI pantau. Coba simbol lain.
         </p>
       )}
 

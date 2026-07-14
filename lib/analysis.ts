@@ -1,10 +1,11 @@
 import { formatUsd, formatPct, timeAgo } from "./format";
 import { nextEvent } from "./economiccalendar";
+import { buildDumpCandidates, buildSmartMoneyAccumulation } from "./scanner-categories";
 import type { NoctrunSnapshot } from "./snapshot";
 import type { CoinMarket, WhaleTransfer, NewsItem, DexPool } from "./types";
 
 // ---------------------------------------------------------------------------
-// Nocturn is not a price oracle. Every line below is derived from the live
+// ElVoid AI is not a price oracle. Every line below is derived from the live
 // snapshot (Fear & Greed, whale flow, funding/OI, pump & rugpull scores,
 // news, economic calendar) with plain rule-based logic — no model call, no
 // hallucinated numbers, no API cost. That's the whole point: it stays free
@@ -73,12 +74,12 @@ function supportResistance(market: CoinMarket) {
 }
 
 // ---------------------------------------------------------------------------
-// Per-coin report, in the 6-section Nocturn format.
+// Per-coin report, in the 6-section ElVoid AI format.
 // ---------------------------------------------------------------------------
 export function analyzeCoin(query: string, snap: NoctrunSnapshot): string {
   const market = findMarket(snap.markets, query);
   if (!market) {
-    return `Saya tidak menemukan "${query}" di 150 coin teratas yang Nocturn pantau saat ini. Coba simbol lain, atau tanya soal market secara umum, whale activity, atau risk.`;
+    return `Saya tidak menemukan "${query}" di 150 coin teratas yang ElVoid AI pantau saat ini. Coba simbol lain, atau tanya soal market secara umum, whale activity, atau risk.`;
   }
 
   const symbol = market.symbol.toUpperCase();
@@ -196,7 +197,7 @@ export function generateMarketSummary(snap: NoctrunSnapshot): string {
   const posNews = news.filter((n) => n.sentiment === "positive").length;
 
   const lines: string[] = [];
-  lines.push("## Nocturn Market Snapshot");
+  lines.push("## ElVoid AI Market Snapshot");
   lines.push("");
 
   lines.push("📊 **Market Summary**");
@@ -312,7 +313,7 @@ export function routeMessage(message: string, snap: NoctrunSnapshot): string {
 
   if (/^(hi|halo|hai|hey|hello|p)\b/.test(m) || m.length < 3) {
     return (
-      "Halo, saya ElVoid AI — asisten intelijen pasar untuk Nocturn. Saya bekerja langsung dari data live " +
+      "Halo, saya ElVoid AI — asisten intelijen pasar untuk ELSTAND INTELLIGENCE. Saya bekerja langsung dari data live " +
       "(Fear & Greed, whale flow, funding/OI, momentum, risk assessment, news, economic calendar), tanpa model berbayar di baliknya.\n\n" +
       "Coba tanya:\n- \"analisa ALLO\" (atau simbol lain)\n" +
       "- \"whale activity hari ini\"\n- \"risk tertinggi apa\"\n- \"momentum sekarang\"\n- \"berita terbaru\"\n- \"ringkasan market\""
@@ -351,7 +352,21 @@ export interface CoinReport {
   risk: { score?: number; confidence?: number; flags: string[]; text: string };
   momentum: { fundingRate?: number; openInterestValue?: number; support?: number; resistance?: number };
   news: { title: string; source: string; publishedAt: string; sentiment?: NewsItem["sentiment"] }[];
-  onchain?: { network: string; liquidityUsd: number; volume24hUsd: number; poolCreatedAt?: string };
+  onchain?: { network: string; liquidityUsd: number; volume24hUsd: number; fdvUsd?: number; poolCreatedAt?: string };
+  /** Bearish mirror of aiAnalysis.pumpScore — undefined when no bearish signal fires (never forced to 0). */
+  dumpScore?: number;
+  /** Net whale inflow score (0-100) — undefined when no meaningful net inflow was detected. */
+  smartMoneyScore?: number;
+  /**
+   * Holder count and next unlock are NOT wired to a live data source yet —
+   * this app has no on-chain holder-count or vesting-schedule provider
+   * configured. Left `null` (never fabricated) so the UI can show an honest
+   * "data provider not connected" placeholder instead of a fake number.
+   */
+  holders: number | null;
+  nextUnlock: { date: string; amountUsd?: number } | null;
+  /** Market-wide upcoming events — relevant to every coin, not coin-specific (no per-token calendar source exists). */
+  upcomingEvents: { title: string; country: string; date: string; impact: "high" | "medium" | "low" }[];
   conclusion: string;
 }
 
@@ -370,6 +385,9 @@ export function getCoinReportData(query: string, snap: NoctrunSnapshot): CoinRep
       risk: { flags: [], text: "" },
       momentum: {},
       news: [],
+      holders: null,
+      nextUnlock: null,
+      upcomingEvents: [],
       conclusion: "",
     };
   }
@@ -383,6 +401,17 @@ export function getCoinReportData(query: string, snap: NoctrunSnapshot): CoinRep
   const news = newsFor(market.symbol, market.name, snap.news);
   const pool = findPool(snap.pools, market.symbol);
   const score = pump?.score ?? 0;
+
+  // Reuses the exact same Token Scanner category logic as the Home dashboard
+  // — one rule set, never two different answers for the same symbol.
+  const dump = buildDumpCandidates(snap.markets, snap.funding, snap.whales).find((d) => d.symbol === symbol);
+  const smartMoney = buildSmartMoneyAccumulation(snap.whales, snap.markets).find((s) => s.symbol === symbol);
+  const smartMoneyScore = smartMoney ? Math.min(100, Math.round((smartMoney.netInflowUsd / 5_000_000) * 100)) : undefined;
+  const upcomingEvents = snap.calendar
+    .filter((e) => new Date(e.date).getTime() >= Date.now())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 3)
+    .map((e) => ({ title: e.title, country: e.country, date: e.date, impact: e.impact }));
 
   return {
     found: true,
@@ -432,9 +461,15 @@ export function getCoinReportData(query: string, snap: NoctrunSnapshot): CoinRep
           network: pool.network,
           liquidityUsd: pool.liquidityUsd,
           volume24hUsd: pool.volume24hUsd,
+          fdvUsd: pool.fdvUsd,
           poolCreatedAt: pool.poolCreatedAt,
         }
       : undefined,
+    dumpScore: dump?.score,
+    smartMoneyScore,
+    holders: null,
+    nextUnlock: null,
+    upcomingEvents,
     conclusion: buildConclusion({ score, riskScore: risk?.score, funding, sr, market, whaleTotal }),
   };
 }

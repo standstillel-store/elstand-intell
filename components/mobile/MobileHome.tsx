@@ -67,7 +67,7 @@ export function MobileHome({
             <p className="eyebrow text-[9px] tracking-[0.18em] text-ink-faint">Elstand Intelligence</p>
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-signal animate-pulseGlow" />
-              <span className="text-base font-bold tracking-tight">NOCTURN</span>
+              <span className="text-base font-bold tracking-tight">ELSTAND</span>
             </div>
           </div>
         </div>
@@ -96,7 +96,7 @@ export function MobileHome({
         <TokenAnalyzerSection />
 
         <p className="rounded-lg border border-amber/30 bg-amber/5 px-3.5 py-3 text-[11px] leading-relaxed text-amber">
-          Nocturn menyajikan sinyal berbasis data publik. Bukan nasihat keuangan — semua skor adalah bahan
+          ElVoid AI menyajikan sinyal berbasis data publik. Bukan nasihat keuangan — semua skor adalah bahan
           pertimbangan, bukan jaminan. Selalu verifikasi mandiri sebelum bertransaksi.
         </p>
       </div>

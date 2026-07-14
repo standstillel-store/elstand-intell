@@ -2,7 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import { AiSignalView } from "@/components/ai-signal/AiSignalView";
 
 export const metadata = {
-  title: "AI Signal | Nocturn",
+  title: "AI Signal | ELSTAND INTELLIGENCE",
 };
 
 export default function AiSignalPage() {

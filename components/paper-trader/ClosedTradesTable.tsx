@@ -1,3 +1,6 @@
+"use client";
+import { useRef, useState } from "react";
+import { ImageIcon, Upload, Loader2 } from "lucide-react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { timeAgo } from "@/lib/format";
 import type { JournalWithSignal } from "@/lib/elvoid/types";
@@ -8,9 +11,68 @@ const RESULT_STYLE: Record<string, string> = {
   breakeven: "bg-ink-faint/10 text-ink-muted border-line",
 };
 
-export function ClosedTradesTable({ entries }: { entries: JournalWithSignal[] }) {
+function ScreenshotSlot({ entry, onUploaded }: { entry: JournalWithSignal; onUploaded: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      await fetch("/api/paper-trader/journal/screenshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ journalId: entry.id, filename: file.name, dataUrl }),
+      });
+      onUploaded();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (entry.screenshot_url) {
+    return (
+      <a
+        href={entry.screenshot_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="shrink-0 text-ink-faint hover:text-signal-glow"
+        title="Lihat screenshot trade"
+      >
+        <ImageIcon size={13} />
+      </a>
+    );
+  }
+
   return (
-    <div className="panel p-4">
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        title="Tambah screenshot trade"
+        className="shrink-0 text-ink-faint/50 hover:text-signal-glow disabled:opacity-50"
+      >
+        {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+      </button>
+    </>
+  );
+}
+
+export function ClosedTradesTable({ entries, onRefresh }: { entries: JournalWithSignal[]; onRefresh?: () => void }) {
+  return (
+    <div className="glow-card p-4">
       <SectionHeader code="CLS" title="Recent Trades" hint={`${entries.length} trade ditutup`} />
       {!entries.length && <p className="py-6 text-center text-sm text-ink-muted">Belum ada trade yang ditutup.</p>}
       {entries.length > 0 && (
@@ -38,6 +100,7 @@ export function ClosedTradesTable({ entries }: { entries: JournalWithSignal[] })
                 </div>
                 <div className="text-ink-faint">{e.rr.toFixed(2)}R</div>
               </div>
+              <ScreenshotSlot entry={e} onUploaded={() => onRefresh?.()} />
               <span className="w-14 shrink-0 text-right text-[11px] text-ink-faint">{timeAgo(e.closed_at)}</span>
             </li>
           ))}

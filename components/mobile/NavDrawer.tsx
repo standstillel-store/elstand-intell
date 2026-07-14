@@ -10,10 +10,11 @@ import {
   Radar,
   Wallet,
   ClipboardList,
-  BarChart3,
+  ScanSearch,
   Waves,
   Newspaper,
   CalendarDays,
+  Briefcase,
   Settings,
   BookOpen,
 } from "lucide-react";
@@ -24,10 +25,11 @@ const NAV_ITEMS = [
   { href: "/ai-signal", label: "AI Signal", icon: Radar },
   { href: "/paper-trader", label: "Paper Trader", icon: Wallet },
   { href: "/ai-journal", label: "AI Journal", icon: ClipboardList },
-  { href: "/ai-performance", label: "AI Performance", icon: BarChart3 },
-  { href: "/whale", label: "Whale", icon: Waves },
+  { href: "/scanner", label: "Token Scanner", icon: ScanSearch },
+  { href: "/whale", label: "Whale Activity", icon: Waves },
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/economic-calendar", label: "Economic Calendar", icon: CalendarDays },
+  { href: "/portfolio", label: "Portfolio", icon: Briefcase },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -81,10 +83,10 @@ export function NavDrawer() {
       >
         <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-4">
           <div className="leading-tight">
-            <p className="eyebrow text-[9px] tracking-[0.18em] text-ink-faint">Elstand Intelligence</p>
+            <p className="eyebrow text-[9px] tracking-[0.18em] text-ink-faint">ElVoid AI Engine</p>
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-signal animate-pulseGlow" />
-              <span className="text-base font-bold tracking-tight">NOCTURN</span>
+              <span className="text-base font-bold tracking-tight">ELSTAND INTEL</span>
             </div>
           </div>
           <button

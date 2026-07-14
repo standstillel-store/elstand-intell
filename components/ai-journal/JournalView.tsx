@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, ImageIcon } from "lucide-react";
 import { formatUsd, timeAgo } from "@/lib/format";
 import type { JournalWithSignal } from "@/lib/elvoid/types";
 
@@ -13,6 +13,8 @@ const RESULT_STYLE: Record<string, string> = {
 export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
   const [resultFilter, setResultFilter] = useState<"all" | "win" | "loss" | "breakeven">("all");
   const [coinFilter, setCoinFilter] = useState("all");
+  const [strategyFilter, setStrategyFilter] = useState("all");
+  const [timeframeFilter, setTimeframeFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const coins = useMemo(() => {
@@ -20,15 +22,27 @@ export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
     return ["all", ...Array.from(set).sort()];
   }, [entries]);
 
+  const strategies = useMemo(() => {
+    const set = new Set(entries.map((e) => e.signal?.strategy).filter(Boolean) as string[]);
+    return ["all", ...Array.from(set).sort()];
+  }, [entries]);
+
+  const timeframes = useMemo(() => {
+    const set = new Set(entries.map((e) => e.signal?.timeframe).filter(Boolean) as string[]);
+    return ["all", ...Array.from(set).sort()];
+  }, [entries]);
+
   const filtered = entries.filter((e) => {
     if (resultFilter !== "all" && e.result !== resultFilter) return false;
     if (coinFilter !== "all" && e.signal?.coin !== coinFilter) return false;
+    if (strategyFilter !== "all" && e.signal?.strategy !== strategyFilter) return false;
+    if (timeframeFilter !== "all" && e.signal?.timeframe !== timeframeFilter) return false;
     return true;
   });
 
   if (!entries.length) {
     return (
-      <div className="panel p-6 text-center text-sm text-ink-muted">
+      <div className="glow-card p-6 text-center text-sm text-ink-muted">
         Belum ada trade yang ditutup. Eksekusi sinyal di halaman <strong className="text-ink">AI Signal</strong>, lalu Sync di{" "}
         <strong className="text-ink">Paper Trader</strong> untuk mulai mengisi journal ini.
       </div>
@@ -60,10 +74,32 @@ export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
             </option>
           ))}
         </select>
+        <select
+          value={strategyFilter}
+          onChange={(e) => setStrategyFilter(e.target.value)}
+          className="rounded-full border border-line bg-bg px-3 py-1 text-xs text-ink-muted outline-none"
+        >
+          {strategies.map((s) => (
+            <option key={s} value={s}>
+              {s === "all" ? "Semua Strategi" : s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={timeframeFilter}
+          onChange={(e) => setTimeframeFilter(e.target.value)}
+          className="rounded-full border border-line bg-bg px-3 py-1 text-xs text-ink-muted outline-none"
+        >
+          {timeframes.map((t) => (
+            <option key={t} value={t}>
+              {t === "all" ? "Semua Timeframe" : t}
+            </option>
+          ))}
+        </select>
         <span className="ml-auto text-xs text-ink-faint">{filtered.length} entri</span>
       </div>
 
-      <div className="panel divide-y divide-line p-0">
+      <div className="glow-card divide-y divide-line p-0">
         {!filtered.length && <p className="p-6 text-center text-sm text-ink-muted">Tidak ada trade yang cocok dengan filter ini.</p>}
         {filtered.map((e) => {
           const expanded = expandedId === e.id;
@@ -88,6 +124,7 @@ export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
                   {e.profit_percent.toFixed(2)}%
                 </span>
                 <span className="mono-num hidden w-14 shrink-0 text-right text-xs text-ink-faint sm:block">{e.rr.toFixed(2)}R</span>
+                {e.screenshot_url && <ImageIcon size={12} className="shrink-0 text-ink-faint" />}
                 <span className="hidden w-16 shrink-0 text-right text-[11px] text-ink-faint md:block">{timeAgo(e.closed_at)}</span>
                 {expanded ? (
                   <ChevronUp size={14} className="shrink-0 text-ink-faint" />
@@ -110,6 +147,16 @@ export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
                       Durasi posisi:{" "}
                       {e.duration_minutes < 60 ? `${e.duration_minutes} menit` : `${(e.duration_minutes / 60).toFixed(1)} jam`}
                     </p>
+                  )}
+                  {e.screenshot_url && (
+                    <a href={e.screenshot_url} target="_blank" rel="noopener noreferrer" className="block pt-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={e.screenshot_url}
+                        alt={`Screenshot trade ${e.signal?.coin ?? ""}`}
+                        className="max-h-48 rounded-md border border-line object-cover"
+                      />
+                    </a>
                   )}
                 </div>
               )}

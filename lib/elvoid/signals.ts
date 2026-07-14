@@ -10,10 +10,14 @@ function toRow(signal: GeneratedSignal) {
     sl: signal.sl,
     tp1: signal.tp1,
     tp2: signal.tp2,
+    tp3: signal.tp3,
+    timeframe: signal.timeframe,
     confidence: signal.confidence,
     risk_percent: signal.risk_percent,
     reason: signal.reason,
     strategy: signal.strategy,
+    scans: signal.scans,
+    extra_reasoning: signal.extraReasoning,
     status: "new" as const,
   };
 }

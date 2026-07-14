@@ -10,7 +10,7 @@ function monthLabel(key: string): string {
 export function MonthlyPerformanceChart({ months }: { months: MonthlyPoint[] }) {
   if (!months.length) {
     return (
-      <div className="panel p-4">
+      <div className="glow-card p-4">
         <SectionHeader code="MTH" title="Monthly Performance" />
         <p className="py-8 text-center text-sm text-ink-muted">Belum ada trade yang ditutup bulan ini.</p>
       </div>
@@ -20,7 +20,7 @@ export function MonthlyPerformanceChart({ months }: { months: MonthlyPoint[] }) 
   const maxAbs = Math.max(1, ...months.map((m) => Math.abs(m.profitPercent)));
 
   return (
-    <div className="panel p-4">
+    <div className="glow-card p-4">
       <SectionHeader code="MTH" title="Monthly Performance" hint="% profit per bulan" />
       <div className="flex items-end gap-3 overflow-x-auto pb-1 pt-4">
         {months.map((m) => {

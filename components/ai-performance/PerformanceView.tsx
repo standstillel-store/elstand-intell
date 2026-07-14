@@ -16,7 +16,7 @@ function HighlightCard({
   tone: "up" | "down" | "neutral";
 }) {
   return (
-    <div className="panel p-4">
+    <div className="glow-card p-4">
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-ink-faint">
         <Icon size={13} />
         {label}
@@ -32,7 +32,7 @@ function HighlightCard({
 export function PerformanceView({ report }: { report: PerformanceReport }) {
   if (!report.strategies.length) {
     return (
-      <div className="panel p-6 text-center text-sm text-ink-muted">
+      <div className="glow-card p-6 text-center text-sm text-ink-muted">
         Belum cukup trade yang ditutup untuk analisis performa. Setiap strategi/coin butuh minimal 2 trade sebelum masuk
         peringkat — jalankan beberapa paper trade dulu di <strong className="text-ink">Paper Trader</strong>.
       </div>
@@ -98,7 +98,7 @@ export function PerformanceView({ report }: { report: PerformanceReport }) {
         </p>
       </div>
 
-      <div className="panel p-4">
+      <div className="glow-card p-4">
         <SectionHeader code="STR" title="Strategy Performance" hint={`${report.strategies.length} strategi`} />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-sm">
@@ -132,7 +132,7 @@ export function PerformanceView({ report }: { report: PerformanceReport }) {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <div className="panel p-4">
+        <div className="glow-card p-4">
           <SectionHeader code="COI" title="Coin Performance" hint={`${report.coins.length} coin`} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -163,7 +163,7 @@ export function PerformanceView({ report }: { report: PerformanceReport }) {
           </div>
         </div>
 
-        <div className="panel p-4">
+        <div className="glow-card p-4">
           <SectionHeader code="SET" title="Setup Win Rate" hint={`${report.setups.length} setup`} />
           <ul className="divide-y divide-line">
             {report.setups.map((s) => (

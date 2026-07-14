@@ -8,7 +8,7 @@ export function Footer() {
           Methodology
         </Link>
         <span className="mx-2">·</span>
-        Nocturn is a signal aggregator, not financial advice.
+        ELSTAND INTELLIGENCE is a signal aggregator, not financial advice.
       </p>
       <p className="mt-1.5 text-[10px] uppercase tracking-[0.2em] text-ink-faint">Powered by Scridzy</p>
     </footer>

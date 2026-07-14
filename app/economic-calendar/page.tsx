@@ -3,7 +3,7 @@ import { getEconomicCalendar } from "@/lib/economiccalendar";
 import type { EconomicEvent } from "@/lib/types";
 
 export const metadata = {
-  title: "Economic Calendar | Nocturn",
+  title: "Economic Calendar | ELSTAND INTELLIGENCE",
 };
 
 const IMPACT_STYLE: Record<string, string> = {
@@ -28,11 +28,11 @@ export default async function EconomicCalendarPage() {
 
   return (
     <AppShell title="Economic Calendar" subtitle="Event makro high/medium impact minggu ini — dipakai ElVoid AI untuk Risk Assessment scan.">
-      {!sorted.length && <div className="panel p-6 text-center text-sm text-ink-muted">Tidak ada event terjadwal minggu ini.</div>}
+      {!sorted.length && <div className="glow-card p-6 text-center text-sm text-ink-muted">Tidak ada event terjadwal minggu ini.</div>}
 
       <div className="space-y-4">
         {[...byDay.entries()].map(([day, dayEvents]) => (
-          <div key={day} className="panel p-4">
+          <div key={day} className="glow-card p-4">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-faint">{day}</p>
             <ul className="divide-y divide-line">
               {dayEvents.map((e, i) => (

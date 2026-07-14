@@ -17,11 +17,16 @@ export interface AiSignal {
   sl: number;
   tp1: number;
   tp2: number;
+  tp3: number | null;
+  timeframe: string;
   confidence: number;
   risk_percent: number;
   reason: string;
   strategy: string;
   status: SignalStatus;
+  /** Structured scan snapshot from generation time — powers the AI Reasoning checklist. Null for signals saved before the 2026-07 redesign. */
+  scans: ScanResult[] | null;
+  extra_reasoning: ScanResult[] | null;
   created_at: string;
 }
 
@@ -33,6 +38,7 @@ export interface AiJournalEntry {
   rr: number;
   duration_minutes: number | null;
   notes: string | null;
+  screenshot_url: string | null;
   closed_at: string;
 }
 
@@ -58,7 +64,7 @@ export interface PaperWallet {
 
 /** A closed trade with its originating signal joined in, for journal/table display. */
 export interface JournalWithSignal extends AiJournalEntry {
-  signal: Pick<AiSignal, "coin" | "side" | "strategy" | "confidence" | "entry" | "reason"> | null;
+  signal: Pick<AiSignal, "coin" | "side" | "strategy" | "confidence" | "entry" | "reason" | "timeframe"> | null;
 }
 
 /** One scanner's read — the building block every ElVoid AI signal is assembled from. */
