@@ -1,5 +1,7 @@
 "use client";
 import { Send, Loader2 } from "lucide-react";
+import { LineChart } from "lucide-react";
+import Link from "next/link";
 import { useRef, useEffect } from "react";
 import { useElVoidChat } from "@/lib/hooks/useElVoidChat";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -26,6 +28,14 @@ export function ElVoidChatPanel({ context }: { context: Record<string, unknown> 
             }`}
           >
             {m.text}
+            {m.action?.type === "open_chart" && (
+              <Link
+                href={`/ai-signal?tab=chart&symbol=${m.action.symbol}`}
+                className="mt-2 flex items-center gap-1.5 rounded-md border border-signal/40 px-2.5 py-1.5 text-[11px] font-medium text-signal-glow hover:border-signal"
+              >
+                <LineChart size={12} /> Buka Chart {m.action.symbol}
+              </Link>
+            )}
           </div>
         ))}
         {loading && (

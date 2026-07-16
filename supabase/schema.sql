@@ -29,13 +29,17 @@ create table if not exists ai_signals (
   tp3 numeric,                                 -- optional 3rd target, ElVoid AI UI redesign (2026-07)
   timeframe text not null default '4h',        -- candle interval the signal was generated on
   scans jsonb,                                 -- structured ScanResult[] snapshot, powers the AI Reasoning checklist UI
-  extra_reasoning jsonb,                       -- structured extended ScanResult[] (FVG/OB/Funding/OI/SMT), same purpose
+  extra_reasoning jsonb,                       -- structured extended ScanResult[] (FVG/OB/Funding/OI/SMT/MACD/Stablecoin), same purpose
+  order_type text not null default 'market' check (order_type in ('market', 'limit', 'stop')),
+  trade_grade text check (trade_grade in ('A+', 'A', 'B', 'C')),
+  probability_tp numeric,                      -- estimated probability (%) of hitting a TP before SL — see lib/elvoid/engine.ts
+  probability_sl numeric,
   confidence numeric not null check (confidence >= 0 and confidence <= 100),
   risk_percent numeric not null default 1,
   reason text not null,                        -- human-readable narrative (Bahasa Indonesia)
   strategy text not null,                      -- e.g. "Liquidity Sweep Reversal"
   status text not null default 'new' check (
-    status in ('new', 'open', 'tp1_hit', 'closed', 'invalidated', 'expired')
+    status in ('new', 'pending', 'open', 'tp1_hit', 'closed', 'invalidated', 'expired')
   ),
   created_at timestamptz not null default now()
 );
@@ -45,6 +49,21 @@ alter table ai_signals add column if not exists tp3 numeric;
 alter table ai_signals add column if not exists timeframe text not null default '4h';
 alter table ai_signals add column if not exists scans jsonb;
 alter table ai_signals add column if not exists extra_reasoning jsonb;
+
+-- Safe to re-run against a database created before the AI Trading Terminal
+-- upgrade (2026-07, part 2): Market/Limit/Stop orders, Trade Grade, and
+-- Probability TP/SL.
+alter table ai_signals add column if not exists order_type text not null default 'market';
+alter table ai_signals add column if not exists trade_grade text;
+alter table ai_signals add column if not exists probability_tp numeric;
+alter table ai_signals add column if not exists probability_sl numeric;
+alter table ai_signals drop constraint if exists ai_signals_order_type_check;
+alter table ai_signals add constraint ai_signals_order_type_check check (order_type in ('market', 'limit', 'stop'));
+alter table ai_signals drop constraint if exists ai_signals_trade_grade_check;
+alter table ai_signals add constraint ai_signals_trade_grade_check check (trade_grade in ('A+', 'A', 'B', 'C'));
+alter table ai_signals drop constraint if exists ai_signals_status_check;
+alter table ai_signals add constraint ai_signals_status_check
+  check (status in ('new', 'pending', 'open', 'tp1_hit', 'closed', 'invalidated', 'expired'));
 
 create index if not exists ai_signals_status_idx on ai_signals (status);
 create index if not exists ai_signals_coin_idx on ai_signals (coin);
@@ -97,9 +116,17 @@ create table if not exists paper_wallet (
   equity numeric not null default 10000,
   total_profit numeric not null default 0,
   risk_per_trade numeric not null default 1,    -- % of equity risked per trade
+  auto_execute boolean not null default false,  -- when true, scan route auto-opens qualifying signals as Market orders
+  auto_execute_min_grade text not null default 'A' check (auto_execute_min_grade in ('A+', 'A', 'B', 'C')),
   updated_at timestamptz not null default now(),
   constraint paper_wallet_singleton check (id = 1)
 );
+
+-- Safe to re-run against a database created before the AI Trading Terminal upgrade (2026-07, part 2).
+alter table paper_wallet add column if not exists auto_execute boolean not null default false;
+alter table paper_wallet add column if not exists auto_execute_min_grade text not null default 'A';
+alter table paper_wallet drop constraint if exists paper_wallet_auto_execute_min_grade_check;
+alter table paper_wallet add constraint paper_wallet_auto_execute_min_grade_check check (auto_execute_min_grade in ('A+', 'A', 'B', 'C'));
 
 insert into ai_statistics (id) values (1) on conflict (id) do nothing;
 insert into paper_wallet (id) values (1) on conflict (id) do nothing;

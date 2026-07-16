@@ -18,6 +18,9 @@ function toRow(signal: GeneratedSignal) {
     strategy: signal.strategy,
     scans: signal.scans,
     extra_reasoning: signal.extraReasoning,
+    trade_grade: signal.tradeGrade,
+    probability_tp: signal.probabilityTp,
+    probability_sl: signal.probabilitySl,
     status: "new" as const,
   };
 }

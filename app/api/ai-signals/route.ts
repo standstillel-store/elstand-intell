@@ -15,18 +15,19 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  let body: { coin?: string };
+  let body: { coin?: string; timeframe?: string };
   try {
-    body = (await req.json()) as { coin?: string };
+    body = (await req.json()) as { coin?: string; timeframe?: string };
   } catch {
     return NextResponse.json({ error: "Body tidak valid." }, { status: 400 });
   }
   const coin = (body.coin ?? "").trim();
   if (!coin) return NextResponse.json({ error: "Sertakan simbol coin, misalnya BTC." }, { status: 400 });
+  const timeframe = body.timeframe ?? "4h";
 
   try {
     const ctx = await buildScanContext();
-    const generated = await buildSignalForSymbol(coin, ctx);
+    const generated = await buildSignalForSymbol(coin, ctx, timeframe);
     if (!generated) {
       return NextResponse.json(
         { error: `Data candle untuk ${coin.toUpperCase()} tidak tersedia saat ini — coba simbol lain.` },
@@ -42,6 +43,10 @@ export async function POST(req: Request) {
       signal: {
         ...generated,
         extra_reasoning: generated.extraReasoning,
+        trade_grade: generated.tradeGrade,
+        probability_tp: generated.probabilityTp,
+        probability_sl: generated.probabilitySl,
+        order_type: "market" as const,
         id: `local-${Date.now()}`,
         status: "new",
         created_at: new Date().toISOString(),

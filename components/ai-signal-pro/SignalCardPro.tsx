@@ -1,21 +1,29 @@
 "use client";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Minus, ShieldAlert, Clock } from "lucide-react";
+import { Check, Minus, ShieldAlert, Clock, Target } from "lucide-react";
 import clsx from "clsx";
 import { SideBadge, StatusBadge, Badge } from "@/components/ui/Badge";
 import { formatUsd } from "@/lib/format";
 import { useTokenAnalyzer } from "@/components/token-analyzer/TokenAnalyzerContext";
-import type { AiSignal, ScanResult } from "@/lib/elvoid/types";
+import type { AiSignal, ScanResult, OrderType, TradeGrade } from "@/lib/elvoid/types";
 
-type DisplayStatus = "running" | "win" | "loss" | "invalidated" | "expired" | "breakeven";
+type DisplayStatus = "running" | "win" | "loss" | "invalidated" | "expired" | "breakeven" | "pending";
 
 function statusFor(signal: Pick<AiSignal, "status">, journalResult?: "win" | "loss" | "breakeven"): DisplayStatus {
   if (signal.status === "closed") return journalResult ?? "win";
   if (signal.status === "invalidated") return "invalidated";
   if (signal.status === "expired") return "expired";
+  if (signal.status === "pending") return "pending";
   return "running";
 }
+
+const GRADE_TONE: Record<TradeGrade, "up" | "signal" | "amber" | "neutral"> = {
+  "A+": "up",
+  A: "up",
+  B: "signal",
+  C: "amber",
+};
 
 /** Order + display label for the AI Reasoning checklist — the exact 10-item taxonomy from the product brief, each backed by a real scanner key. */
 const REASONING_MAP: { key: string; label: string }[] = [
@@ -46,14 +54,32 @@ export function SignalCardPro({
 }: {
   signal: Pick<
     AiSignal,
-    "coin" | "side" | "entry" | "sl" | "tp1" | "tp2" | "tp3" | "timeframe" | "confidence" | "strategy" | "reason" | "status" | "scans" | "extra_reasoning" | "risk_percent"
+    | "coin"
+    | "side"
+    | "entry"
+    | "sl"
+    | "tp1"
+    | "tp2"
+    | "tp3"
+    | "timeframe"
+    | "confidence"
+    | "strategy"
+    | "reason"
+    | "status"
+    | "scans"
+    | "extra_reasoning"
+    | "risk_percent"
+    | "trade_grade"
+    | "probability_tp"
+    | "probability_sl"
   >;
   journalResult?: "win" | "loss" | "breakeven";
-  onExecute?: () => void;
+  onExecute?: (orderType: OrderType) => void;
   executing?: boolean;
   compact?: boolean;
 }) {
   const { open } = useTokenAnalyzer();
+  const [orderType, setOrderType] = useState<OrderType>("market");
   const isLong = signal.side === "LONG";
   const winningBias = isLong ? "bullish" : "bearish";
   const status = statusFor(signal, journalResult);
@@ -66,6 +92,11 @@ export function SignalCardPro({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <SideBadge side={signal.side} />
+          {signal.trade_grade && (
+            <Badge tone={GRADE_TONE[signal.trade_grade]} size="md" icon={<Target size={11} />}>
+              {signal.trade_grade}
+            </Badge>
+          )}
           <button onClick={() => open(signal.coin)} className="text-left hover:text-signal-glow">
             <p className="text-sm font-bold leading-tight">{signal.coin}</p>
             <p className="text-[11px] text-ink-faint">{signal.strategy}</p>
@@ -79,19 +110,43 @@ export function SignalCardPro({
         </div>
       </div>
 
-      <div className="mt-3">
-        <div className="mb-1 flex items-center justify-between text-[11px]">
-          <span className="text-ink-faint">Confidence</span>
-          <span className="mono-num font-semibold text-signal-glow">{signal.confidence}%</span>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div>
+          <div className="mb-1 flex items-center justify-between text-[11px]">
+            <span className="text-ink-faint">Confidence</span>
+            <span className="mono-num font-semibold text-signal-glow">{signal.confidence}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-raised">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${signal.confidence}%` }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="h-full rounded-full bg-signal"
+            />
+          </div>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-raised">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${signal.confidence}%` }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="h-full rounded-full bg-signal"
-          />
-        </div>
+        {signal.probability_tp !== null && (
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="text-ink-faint">Prob. TP</span>
+              <span className="mono-num font-semibold text-up">{signal.probability_tp}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-raised">
+              <div className="h-full rounded-full bg-up" style={{ width: `${signal.probability_tp}%` }} />
+            </div>
+          </div>
+        )}
+        {signal.probability_sl !== null && (
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="text-ink-faint">Prob. SL</span>
+              <span className="mono-num font-semibold text-down">{signal.probability_sl}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-raised">
+              <div className="h-full rounded-full bg-down" style={{ width: `${signal.probability_sl}%` }} />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mono-num mt-3 grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
@@ -153,13 +208,35 @@ export function SignalCardPro({
       <p className="mt-3 text-[12px] leading-relaxed text-ink-muted">{signal.reason}</p>
 
       {onExecute && signal.status === "new" && (
-        <button
-          onClick={onExecute}
-          disabled={executing}
-          className="mt-3 w-full rounded-md bg-signal py-2 text-xs font-medium text-white transition-colors hover:bg-signal-glow disabled:opacity-50"
-        >
-          {executing ? "Membuka posisi…" : "Execute Paper Trade"}
-        </button>
+        <div className="mt-3 space-y-2">
+          <div className="flex overflow-hidden rounded-md border border-line text-[11px]">
+            {(["market", "limit", "stop"] as OrderType[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setOrderType(t)}
+                className={clsx(
+                  "flex-1 py-1.5 capitalize transition-colors",
+                  orderType === t ? "bg-signal/20 text-signal-glow" : "text-ink-faint hover:text-ink"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => onExecute(orderType)}
+            disabled={executing}
+            className="w-full rounded-md bg-signal py-2 text-xs font-medium text-white transition-colors hover:bg-signal-glow disabled:opacity-50"
+          >
+            {executing
+              ? "Memproses…"
+              : orderType === "market"
+              ? "Execute Market Order"
+              : orderType === "limit"
+              ? `Pasang Limit Order @ ${formatUsd(signal.entry)}`
+              : "Pasang Stop Order (breakout)"}
+          </button>
+        </div>
       )}
     </motion.div>
   );

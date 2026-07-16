@@ -6,6 +6,7 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { EquityCurveChart } from "./EquityCurveChart";
 import { MonthlyPerformanceChart } from "./MonthlyPerformanceChart";
 import { OpenTradesTable } from "./OpenTradesTable";
+import { PendingOrdersTable } from "./PendingOrdersTable";
 import { ClosedTradesTable } from "./ClosedTradesTable";
 import { formatUsd } from "@/lib/format";
 import type { AiSignal, AiStatistics, PaperWallet, JournalWithSignal } from "@/lib/elvoid/types";
@@ -15,6 +16,7 @@ interface ViewState {
   wallet: PaperWallet | null;
   stats: AiStatistics | null;
   openSignals: AiSignal[];
+  pendingSignals: AiSignal[];
   closedEntries: JournalWithSignal[];
   equityCurve: EquityPoint[];
   monthly: MonthlyPoint[];
@@ -26,6 +28,7 @@ const EMPTY_STATE: ViewState = {
   wallet: null,
   stats: null,
   openSignals: [],
+  pendingSignals: [],
   closedEntries: [],
   equityCurve: [],
   monthly: [],
@@ -38,14 +41,16 @@ export function PaperTraderView() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [walletRes, statsRes, openRes, journalRes, perfRes, marketRes] = await Promise.all([
+      const [walletRes, statsRes, openRes, pendingRes, journalRes, perfRes, marketRes] = await Promise.all([
         fetch("/api/paper-trader/wallet").then((r) => r.json()),
         fetch("/api/paper-trader/stats").then((r) => r.json()),
         fetch("/api/ai-signals?status=open,tp1_hit&limit=50").then((r) => r.json()),
+        fetch("/api/ai-signals?status=pending&limit=50").then((r) => r.json()),
         fetch("/api/ai-journal?limit=30").then((r) => r.json()),
         fetch("/api/ai-performance").then((r) => r.json()),
         fetch("/api/market")
@@ -62,6 +67,7 @@ export function PaperTraderView() {
         wallet: walletRes.wallet ?? null,
         stats: statsRes.stats ?? null,
         openSignals: openRes.signals ?? [],
+        pendingSignals: pendingRes.signals ?? [],
         closedEntries: journalRes.entries ?? [],
         equityCurve: perfRes.equityCurve ?? [],
         monthly: perfRes.monthly ?? [],
@@ -101,6 +107,20 @@ export function PaperTraderView() {
       await loadAll();
     } finally {
       setClosingId(null);
+    }
+  }
+
+  async function handleCancel(signal: AiSignal) {
+    setCancelingId(signal.id);
+    try {
+      await fetch("/api/paper-trader/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signalId: signal.id }),
+      });
+      await loadAll();
+    } finally {
+      setCancelingId(null);
     }
   }
 
@@ -155,6 +175,8 @@ export function PaperTraderView() {
         <EquityCurveChart points={state.equityCurve} />
         <MonthlyPerformanceChart months={state.monthly} />
       </div>
+
+      <PendingOrdersTable signals={state.pendingSignals} onCancel={handleCancel} cancelingId={cancelingId} />
 
       <OpenTradesTable
         signals={state.openSignals}

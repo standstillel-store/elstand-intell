@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSnapshot } from "@/lib/snapshot";
-import { routeMessage } from "@/lib/analysis";
+import { routeMessage, extractSymbolQuery } from "@/lib/analysis";
 
 interface ChatBody {
   message: string;
@@ -27,7 +27,14 @@ export async function POST(req: Request) {
   try {
     const snapshot = await getSnapshot();
     const reply = routeMessage(message, snapshot);
-    return NextResponse.json({ reply });
+
+    // "Analisis BTC" -> ElVoid AI answers in text AND offers a direct link
+    // to open that symbol's live chart with the full AI reading drawn on
+    // it (components/ai-signal-pro/ChartAnalysisView.tsx).
+    const symbol = extractSymbolQuery(message, snapshot.markets);
+    const action = symbol ? { type: "open_chart" as const, symbol: symbol.toUpperCase() } : undefined;
+
+    return NextResponse.json({ reply, action });
   } catch (err) {
     console.error("[ElVoid AI] chat engine error:", err);
     return NextResponse.json({

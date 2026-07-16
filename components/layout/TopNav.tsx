@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Search, Settings, BookOpen, ChevronDown, CircleUser } from "lucide-react";
 import clsx from "clsx";
 import { useTokenAnalyzer } from "@/components/token-analyzer/TokenAnalyzerContext";
+import { AlertsBell } from "@/components/alerts/AlertsBell";
 import { formatUsd, formatPct } from "@/lib/format";
 
 interface TickerRow {
@@ -94,24 +95,27 @@ export function TopNav() {
           ))}
         </div>
 
-        <div ref={profileRef} className="relative ml-auto shrink-0">
-          <button
-            onClick={() => setProfileOpen((v) => !v)}
-            className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-ink-muted hover:border-signal/40 hover:text-ink"
-          >
-            <CircleUser size={16} />
-            <ChevronDown size={12} className={clsx("transition-transform", profileOpen && "rotate-180")} />
-          </button>
-          {profileOpen && (
-            <div className="absolute right-0 top-[calc(100%+6px)] w-48 rounded-md border border-line bg-bg-raised py-1 shadow-2xl shadow-black/40">
-              <Link href="/settings" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
-                <Settings size={14} /> Settings
-              </Link>
-              <Link href="/methodology" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
-                <BookOpen size={14} /> Methodology
-              </Link>
-            </div>
-          )}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <AlertsBell />
+          <div ref={profileRef} className="relative">
+            <button
+              onClick={() => setProfileOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-ink-muted hover:border-signal/40 hover:text-ink"
+            >
+              <CircleUser size={16} />
+              <ChevronDown size={12} className={clsx("transition-transform", profileOpen && "rotate-180")} />
+            </button>
+            {profileOpen && (
+              <div className="absolute right-0 top-[calc(100%+6px)] w-48 rounded-md border border-line bg-bg-raised py-1 shadow-2xl shadow-black/40">
+                <Link href="/settings" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
+                  <Settings size={14} /> Settings
+                </Link>
+                <Link href="/methodology" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
+                  <BookOpen size={14} /> Methodology
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

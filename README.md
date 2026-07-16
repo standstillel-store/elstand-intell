@@ -36,6 +36,14 @@ If you plan to share this with other people:
 - **DXY** on the Market Overview strip is the Fed's Broad Trade-Weighted
   USD Index (FRED series `DTWEXBGS`), used as a free proxy for the ICE US
   Dollar Index — not the literal DXY ticker. Labeled as such in the UI.
+- **Trade Grade (A+/A/B/C)** and **Probability TP/SL** are both derived
+  from Confidence and (when enough history exists) strategy calibration —
+  not a separately trained model, and not a promise. Please keep them
+  framed as estimates in any UI copy you add.
+- **Alerts** are recomputed from the live snapshot every time the bell
+  polls (~60s) — there's no persisted alert history or push-notification
+  delivery. A closed browser tab means no alerts are seen until it's
+  reopened.
 
 ## Security note on API keys
 
@@ -65,7 +73,59 @@ that widget just shows an empty/"not configured" state instead of crashing
 the page. `FRED_API_KEY` is the only genuinely optional one — without it the
 DXY and M2 cards simply show a placeholder.
 
-## What's new in the 2026-07 terminal redesign
+## What's new in the AI Trading Terminal upgrade (2026-07, part 2)
+
+- **Live chart on AI Signal** — the `/ai-signal` page now opens on a **Chart
+  Analysis** tab (the old watchlist-scan UI moved to a **Watchlist Signals**
+  tab, unchanged): a Lightweight Charts candlestick + volume chart with
+  EMA20/EMA50, six timeframes (1m/5m/15m/1H/4H/1D), and live updates via
+  Binance's public kline WebSocket (no key needed). ElVoid AI draws Entry
+  (🟢), Stop Loss (🔴), TP1 (🟣), TP2 (🟡), and TP3 (🔵) directly on the chart
+  as price lines.
+- **MACD** joins the scanner set, and **Stablecoin Flow** (market-wide, from
+  the same DefiLlama source as the Market Overview card) is now a reasoning
+  line too — both presentational-only, same rule as the other extended
+  scanners (see `lib/elvoid/scanners.ts`).
+- **Trade Grade (A+/A/B/C)** and **Probability TP / Probability SL** are new
+  fields on every signal — both pure re-reads of Confidence + corroboration
+  count + strategy-calibration history, never a separate model. See the
+  doc-comments on `computeTradeGrade`/`estimateProbabilities` in
+  `lib/elvoid/engine.ts` for exactly how each is derived, and please keep
+  the "estimate, not a guarantee" framing if you extend these.
+- **"Analisis BTC" in ElVoid AI Chat** now replies with a **Buka Chart**
+  button that opens the Chart Analysis tab for that symbol, live-drawn setup
+  included — both the floating dock and the inline right-rail panel support
+  this (`lib/hooks/useElVoidChat.ts`'s `ChatAction` type).
+- **Market / Limit / Stop orders** — Paper Trader now supports all three.
+  Market fills immediately (unchanged). Limit and Stop go to a new
+  **Pending Orders** table until price actually reaches the trigger
+  (checked on every Sync) or 48h passes (auto-expires). See the doc-comment
+  on `evaluatePendingOrders` in `lib/elvoid/paperTrader.ts` for the exact
+  trigger formulas — both are derived from the signal's own entry/sl, no
+  extra price column needed.
+- **AI Auto-Execute** (Settings, off by default) — when enabled, freshly
+  scanned signals meeting a chosen minimum Trade Grade are automatically
+  opened as Market orders. Opt-in, and always visible in Settings with the
+  exact grade threshold shown.
+- **Post-trade AI Review** — every closed trade in AI Journal now gets a
+  short, rule-based "why it won/lost, mistakes, recommendations" readout
+  (`lib/elvoid/review.ts`) generated from the trade's own recorded data
+  (confidence, duration, realized R:R, which reasoning categories fired at
+  entry) — no LLM, same philosophy as everything else here.
+- **AI Learning** is more visible now: the Performance tab shows how many
+  closed trades the strategy calibration is based on, plus new Average Hold
+  Time and Average Confidence stats.
+- **Alerts** — a bell icon in the top nav (every page) surfaces Liquidity
+  Sweep / BOS-CHoCH from live signals, large whale transfers, extreme
+  funding rates, and directional news, refreshed every 60s
+  (`lib/alerts.ts`, `/api/alerts`). These are recomputed from the live
+  snapshot each time, not a persisted/pushed notification system.
+- **Performance**: the chart is loaded via `next/dynamic({ ssr: false })`
+  (`components/ai-signal-pro/ChartAnalysisView.tsx`) since Lightweight
+  Charts needs a real DOM/canvas and has no reason to be in the initial
+  server-rendered bundle.
+
+## What's new in the terminal redesign (2026-07, part 1)
 
 - **Top Navigation** — logo, ElVoid AI search (type a symbol to open the
   Token Analyzer from anywhere), live BTC/ETH/SOL ticker, profile menu.
@@ -208,12 +268,14 @@ app/
   methodology/                            How scoring + ElVoid AI works
   api/
     ticker/                                          BTC/ETH/SOL for TopNav
+    klines/                                            Candle data for the AI Signal chart
     market/ funding/ feargreed/ dex/ news/ whales/    Data source proxies
     pump-candidates/ rugpull-risk/                    Combined + scored lists
-    chat/                                             Rule-based AI chat
-    ai-signals/ (+ scan/)                              Generate/list signals
-    paper-trader/ (wallet/ execute/ close/ sync/       Paper trading engine
-                   reset/ stats/ journal/screenshot/)   + screenshot upload
+    alerts/                                           Liquidity sweep/whale/funding/news alerts
+    chat/                                             Rule-based AI chat (+ open_chart action)
+    ai-signals/ (+ scan/ + analyze-chart/)              Generate/list/analyze signals
+    paper-trader/ (wallet/ execute/ cancel/ close/       Paper trading engine — Market/Limit/Stop
+                   sync/ reset/ stats/ journal/screenshot/) orders, screenshots
     ai-journal/                                        Journal entries
     ai-performance/                                    Analytics report
     settings/status/                                   Integration status
@@ -224,7 +286,9 @@ components/
   heatmap/                  CryptoHeatmap
   token-analyzer/            Context + slide-over drawer
   market/                     MarketOverviewStrip
-  ai-signal-pro/                SignalCardPro (flagship signal card)
+  ai-signal-pro/                SignalCardPro, TradingChart (Lightweight Charts),
+                                ChartAnalysisView (chart + AI reasoning + order entry)
+  alerts/                        AlertsBell (top nav notification dropdown)
   right-rail/                    ElVoid AI Chat, AI Summary, Macro/Whale Alert,
                                   Economic Calendar mini, Breaking News mini
   scanner/                         Token Scanner teaser (Home) + full view
@@ -232,12 +296,13 @@ components/
   whale/                              Whale Activity view (buy/sell split)
   paper-trader/ ai-journal/ ai-performance/ settings/ news/  Feature components
 lib/                      API clients, types, formatting, scoring engine
-  elvoid/                 ElVoid AI: scanners, engine, paper trading, math
+  elvoid/                 ElVoid AI: scanners, engine, paper trading, math, review
   scanner-categories.ts    Token Scanner's 7 categories (dump/momentum/whale/smart money)
   stablecoins.ts            DefiLlama stablecoin supply
   macro.ts                   FRED DXY-proxy & M2
+  alerts.ts                   Liquidity sweep/BOS-CHoCH/whale/funding/news alert detection
   dashboardSnapshot.ts         Aggregates everything the Home dashboard needs
-  hooks/useElVoidChat.ts        Shared chat hook (dock + inline panel)
+  hooks/useElVoidChat.ts        Shared chat hook (dock + inline panel + chart action)
 supabase/
   schema.sql              Run once in the Supabase SQL editor
 ```
@@ -250,15 +315,17 @@ arrays of already-fetched data and return a scored, sorted, reasoned list.
 No black box: every point added to a score has a comment explaining why.
 
 ElVoid AI Paper Trader's engine lives in `lib/elvoid/`:
-- `indicators.ts` — EMA/RSI/ATR, swing points, support/resistance clustering, trend, volume anomaly.
-- `scanners.ts` — the original 9 directional scan categories (feed Confidence) plus 5 extended,
-  presentational-only reasoning scanners added in 2026-07 (Fair Value Gap, Order Block, Funding,
-  Open Interest, SMT) that power the AI Reasoning checklist without touching the confidence math.
-- `engine.ts` — orchestrates the scanners into a LONG/SHORT signal with Entry/SL/TP1/TP2/TP3/Confidence.
-- `paperTrader.ts` — wallet, trade execution/close lifecycle, TP/SL evaluation, statistics.
-- `performance.ts` — strategy/coin/setup analytics and the confidence-calibration feed.
-- `service.ts` — wires live data sources (including BTC's own change % for the SMT reasoning line)
-  into the engine for one coin or the whole watchlist.
+- `indicators.ts` — EMA/RSI/ATR/MACD, swing points, support/resistance clustering, trend, volume anomaly.
+- `scanners.ts` — the original 9 directional scan categories (feed Confidence) plus 7 extended,
+  presentational-only reasoning scanners (Fair Value Gap, Order Block, Funding, Open Interest, SMT,
+  MACD, Stablecoin Flow) that power the AI Reasoning checklist without touching the confidence math.
+- `engine.ts` — orchestrates the scanners into a LONG/SHORT signal with Entry/SL/TP1/TP2/TP3/Confidence/
+  Trade Grade/Probability TP/SL.
+- `paperTrader.ts` — wallet, Market/Limit/Stop order lifecycle, pending-order triggers, TP/SL evaluation, statistics.
+- `review.ts` — rule-based post-trade "why it won/lost" generator for AI Journal.
+- `performance.ts` — strategy/coin/setup analytics, hold-time/confidence averages, and the confidence-calibration feed.
+- `service.ts` — wires live data sources (including BTC's own change % for SMT and stablecoin flow)
+  into the engine for one coin at any timeframe, or the whole watchlist at 4h.
 
 That's the first place to look if you want to tune weights, add new
 scanners, or adjust thresholds.
@@ -276,6 +343,15 @@ scanners, or adjust thresholds.
   liquidation-heatmap source (Coinglass, etc.) requires a paid API tier, and
   this app's rule is to never fabricate placeholder data. Settings will show
   a "not connected" state if you add this later.
+- **Open Interest** alerts/reasoning use a single snapshot value (no OI
+  history), so they only ever say "OI is large and lines up with the
+  current move" — never "OI is rising/falling", which would need historical
+  OI data this app doesn't fetch.
+- **Stop order trigger** and **Probability TP/SL** are both intentionally
+  simple, documented formulas (see the doc-comments in
+  `lib/elvoid/paperTrader.ts` and `lib/elvoid/engine.ts`) rather than a
+  learned model — consistent with this app's "plain, explainable rules"
+  approach, but worth knowing if you're tuning them.
 - **Whale feed** watches a small starter list of major ERC-20 contracts on
   Ethereum mainnet — extend `lib/alchemy.ts`'s `WATCHLIST`, or add another
   Alchemy network URL, to cover more chains/tokens.

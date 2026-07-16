@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Sparkles, X, Send } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, X, Send, LineChart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useElVoidChat } from "@/lib/hooks/useElVoidChat";
 
@@ -36,6 +37,14 @@ export function AIChatDock({ context }: { context: Record<string, unknown> }) {
                   }`}
                 >
                   {m.text}
+                  {m.action?.type === "open_chart" && (
+                    <Link
+                      href={`/ai-signal?tab=chart&symbol=${m.action.symbol}`}
+                      className="mt-2 flex items-center gap-1.5 rounded-md border border-signal/40 px-2.5 py-1.5 text-xs font-medium text-signal-glow hover:border-signal"
+                    >
+                      <LineChart size={12} /> Buka Chart {m.action.symbol}
+                    </Link>
+                  )}
                 </div>
               ))}
               {loading && <div className="text-xs text-ink-muted">Thinking…</div>}

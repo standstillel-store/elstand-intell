@@ -6,8 +6,10 @@
 // ---------------------------------------------------------------------------
 
 export type SignalSide = "LONG" | "SHORT";
-export type SignalStatus = "new" | "open" | "tp1_hit" | "closed" | "invalidated" | "expired";
+export type SignalStatus = "new" | "pending" | "open" | "tp1_hit" | "closed" | "invalidated" | "expired";
 export type TradeResult = "win" | "loss" | "breakeven";
+export type OrderType = "market" | "limit" | "stop";
+export type TradeGrade = "A+" | "A" | "B" | "C";
 
 export interface AiSignal {
   id: string;
@@ -24,6 +26,10 @@ export interface AiSignal {
   reason: string;
   strategy: string;
   status: SignalStatus;
+  order_type: OrderType;
+  trade_grade: TradeGrade | null;
+  probability_tp: number | null;
+  probability_sl: number | null;
   /** Structured scan snapshot from generation time — powers the AI Reasoning checklist. Null for signals saved before the 2026-07 redesign. */
   scans: ScanResult[] | null;
   extra_reasoning: ScanResult[] | null;
@@ -59,12 +65,15 @@ export interface PaperWallet {
   equity: number;
   total_profit: number;
   risk_per_trade: number;
+  /** When true, /api/ai-signals/scan auto-opens a Market Order for every freshly-generated signal meeting auto_execute_min_grade. Off by default — this is an opt-in feature. */
+  auto_execute: boolean;
+  auto_execute_min_grade: TradeGrade;
   updated_at: string;
 }
 
 /** A closed trade with its originating signal joined in, for journal/table display. */
 export interface JournalWithSignal extends AiJournalEntry {
-  signal: Pick<AiSignal, "coin" | "side" | "strategy" | "confidence" | "entry" | "reason" | "timeframe"> | null;
+  signal: Pick<AiSignal, "coin" | "side" | "strategy" | "confidence" | "entry" | "reason" | "timeframe" | "scans" | "extra_reasoning"> | null;
 }
 
 /** One scanner's read — the building block every ElVoid AI signal is assembled from. */

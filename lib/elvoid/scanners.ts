@@ -1,6 +1,7 @@
 import type { Candle, ScanResult } from "./types";
 import type { NewsItem, WhaleTransfer, EconomicEvent, FundingInfo } from "../types";
 import type { SrLevel, TrendReading, SwingPoint } from "./indicators";
+import { calcMacd } from "./indicators";
 
 // ---------------------------------------------------------------------------
 // ElVoid AI's 10 required scan categories. Each function is a small, pure,
@@ -537,4 +538,59 @@ export function scanSmtDivergence(params: {
     );
   }
   return res("smt_divergence", "SMT (Smart Money Divergence)", "neutral", 0, "Tidak ada divergensi signifikan terhadap BTC saat ini.");
+}
+
+/** MACD (12/26/9) — histogram sign for trend, plus extra weight on a fresh crossover this candle. */
+export function scanMacd(candles: Candle[]): ScanResult {
+  const macd = calcMacd(candles);
+  if (!macd) return res("macd", "MACD", "neutral", 0, "Data candle belum cukup untuk menghitung MACD (butuh minimal 35 candle).");
+
+  const crossText = macd.crossover === "bullish_cross" ? " Golden cross baru saja terjadi." : macd.crossover === "bearish_cross" ? " Death cross baru saja terjadi." : "";
+
+  if (macd.trend === "bullish") {
+    const weight = macd.crossover === "bullish_cross" ? 9 : 5;
+    return res("macd", "MACD", "bullish", weight, `Histogram MACD positif (${macd.histogram.toFixed(4)}).${crossText}`);
+  }
+  if (macd.trend === "bearish") {
+    const weight = macd.crossover === "bearish_cross" ? 9 : 5;
+    return res("macd", "MACD", "bearish", weight, `Histogram MACD negatif (${macd.histogram.toFixed(4)}).${crossText}`);
+  }
+  return res("macd", "MACD", "neutral", 0, "Histogram MACD mendekati nol — momentum netral.");
+}
+
+/**
+ * Stablecoin Flow — market-wide liquidity backdrop, not symbol-specific.
+ * Rising total stablecoin supply usually means fresh capital sitting on
+ * exchanges/DeFi ready to buy; shrinking supply means capital leaving the
+ * crypto ecosystem entirely. Applied the same way to every symbol's
+ * analysis, same as a macro overlay.
+ */
+export function scanStablecoinFlow(stableChange24hUsd?: number): ScanResult {
+  if (stableChange24hUsd === undefined) {
+    return res("stablecoin_flow", "Stablecoin Flow", "neutral", 0, "Data stablecoin supply tidak tersedia saat ini.");
+  }
+  if (stableChange24hUsd > 150_000_000) {
+    return res(
+      "stablecoin_flow",
+      "Stablecoin Flow",
+      "bullish",
+      6,
+      `Supply stablecoin naik ${formatShortUsdSigned(stableChange24hUsd)} dalam 24 jam — likuiditas baru masuk ke ekosistem crypto.`
+    );
+  }
+  if (stableChange24hUsd < -150_000_000) {
+    return res(
+      "stablecoin_flow",
+      "Stablecoin Flow",
+      "bearish",
+      6,
+      `Supply stablecoin turun ${formatShortUsdSigned(stableChange24hUsd)} dalam 24 jam — likuiditas keluar dari ekosistem crypto.`
+    );
+  }
+  return res("stablecoin_flow", "Stablecoin Flow", "neutral", 0, "Supply stablecoin relatif stabil dalam 24 jam terakhir.");
+}
+
+function formatShortUsdSigned(n: number): string {
+  const sign = n >= 0 ? "+" : "-";
+  return `${sign}${shortUsd(Math.abs(n))}`;
 }

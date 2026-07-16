@@ -54,6 +54,10 @@ export interface PerformanceReport {
   bestSetup?: SetupWinRate;
   equityCurve: EquityPoint[];
   monthly: MonthlyPoint[];
+  /** Average of duration_minutes across entries that have it recorded. Null when no entry has a duration yet. */
+  avgHoldMinutes: number | null;
+  /** Average Confidence (from the originating signal) across closed trades. Null when signals weren't joined (pre-redesign data). */
+  avgConfidence: number | null;
 }
 
 export async function getJournalEntries(limit = 200): Promise<JournalWithSignal[]> {
@@ -61,7 +65,7 @@ export async function getJournalEntries(limit = 200): Promise<JournalWithSignal[
   if (!sb) return [];
   const { data, error } = await sb
     .from("ai_journal")
-    .select("*, signal:ai_signals(coin,side,strategy,confidence,entry,reason,timeframe)")
+    .select("*, signal:ai_signals(coin,side,strategy,confidence,entry,reason,timeframe,scans,extra_reasoning)")
     .order("closed_at", { ascending: false })
     .limit(limit);
   if (error) {
@@ -89,7 +93,16 @@ export async function getPerformanceReport(): Promise<PerformanceReport> {
   const chronological = [...entries].sort((a, b) => new Date(a.closed_at).getTime() - new Date(b.closed_at).getTime());
 
   if (!sb || !entries.length) {
-    return { configured: Boolean(sb), strategies: [], coins: [], setups: [], equityCurve: [], monthly: [] };
+    return {
+      configured: Boolean(sb),
+      strategies: [],
+      coins: [],
+      setups: [],
+      equityCurve: [],
+      monthly: [],
+      avgHoldMinutes: null,
+      avgConfidence: null,
+    };
   }
 
   const byStrategy = new Map<string, JournalWithSignal[]>();
@@ -150,7 +163,31 @@ export async function getPerformanceReport(): Promise<PerformanceReport> {
     .sort((a, b) => (a[0] > b[0] ? 1 : -1))
     .map(([month, v]) => ({ month, profitPercent: Number(v.profit.toFixed(2)), trades: v.trades }));
 
-  return { configured: true, strategies, coins, setups, bestStrategy, worstStrategy, bestCoin, worstCoin, bestSetup, equityCurve, monthly };
+  const withDuration = chronological.filter((e) => e.duration_minutes !== null) as (JournalWithSignal & { duration_minutes: number })[];
+  const avgHoldMinutes = withDuration.length
+    ? Number((withDuration.reduce((s, e) => s + e.duration_minutes, 0) / withDuration.length).toFixed(1))
+    : null;
+
+  const withConfidence = chronological.filter((e) => e.signal?.confidence !== undefined);
+  const avgConfidence = withConfidence.length
+    ? Number((withConfidence.reduce((s, e) => s + (e.signal?.confidence ?? 0), 0) / withConfidence.length).toFixed(1))
+    : null;
+
+  return {
+    configured: true,
+    strategies,
+    coins,
+    setups,
+    bestStrategy,
+    worstStrategy,
+    bestCoin,
+    worstCoin,
+    bestSetup,
+    equityCurve,
+    monthly,
+    avgHoldMinutes,
+    avgConfidence,
+  };
 }
 
 /** Feeds engine.ts's calibration step — win rate per strategy label, closed trades only. */

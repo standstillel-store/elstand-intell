@@ -57,8 +57,8 @@ export function SideBadge({ side, size = "md" }: { side: "LONG" | "SHORT"; size?
   );
 }
 
-/** Running / Win / Loss / Invalidated / Expired status pill for AI signals & trades. */
-export function StatusBadge({ status }: { status: "running" | "win" | "loss" | "invalidated" | "expired" | "breakeven" }) {
+/** Running / Win / Loss / Invalidated / Expired / Pending status pill for AI signals & trades. */
+export function StatusBadge({ status }: { status: "running" | "win" | "loss" | "invalidated" | "expired" | "breakeven" | "pending" }) {
   const map: Record<typeof status, { label: string; tone: BadgeTone }> = {
     running: { label: "Running", tone: "signal" },
     win: { label: "Win", tone: "up" },
@@ -66,6 +66,7 @@ export function StatusBadge({ status }: { status: "running" | "win" | "loss" | "
     breakeven: { label: "Breakeven", tone: "amber" },
     invalidated: { label: "Invalidated", tone: "neutral" },
     expired: { label: "Expired", tone: "neutral" },
+    pending: { label: "Pending", tone: "amber" },
   };
   const cfg = map[status];
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;

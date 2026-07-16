@@ -13,6 +13,8 @@ interface Status {
 export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) {
   const [wallet, setWallet] = useState(initialWallet);
   const [riskInput, setRiskInput] = useState(String(initialWallet.risk_per_trade));
+  const [autoExecute, setAutoExecute] = useState(initialWallet.auto_execute);
+  const [autoExecuteMinGrade, setAutoExecuteMinGrade] = useState<PaperWallet["auto_execute_min_grade"]>(initialWallet.auto_execute_min_grade);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
@@ -35,7 +37,7 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
       const res = await fetch("/api/paper-trader/wallet", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ riskPercent: value }),
+        body: JSON.stringify({ riskPercent: value, autoExecute, autoExecuteMinGrade }),
       }).then((r) => r.json());
       if (res.wallet) {
         setWallet(res.wallet);
@@ -63,6 +65,8 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
         equity: 10000,
         total_profit: 0,
         risk_per_trade: wallet.risk_per_trade,
+        auto_execute: wallet.auto_execute,
+        auto_execute_min_grade: wallet.auto_execute_min_grade,
         updated_at: new Date().toISOString(),
       });
       setConfirmReset(false);
@@ -123,6 +127,50 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
             <Save size={13} />
             {saving ? "Menyimpan…" : saved ? "Tersimpan" : "Simpan"}
           </button>
+        </div>
+
+        <div className="mt-4 rounded-md border border-line p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">AI Auto-Execute</p>
+              <p className="mt-0.5 text-[11px] text-ink-muted">
+                ElVoid AI otomatis membuka Market Order untuk sinyal baru dari <strong className="text-ink">Scan Market</strong> yang
+                memenuhi Trade Grade minimum di bawah ini.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setAutoExecute((v) => !v);
+                setSaved(false);
+              }}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${autoExecute ? "bg-signal" : "bg-bg-raised"}`}
+              aria-pressed={autoExecute}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                  autoExecute ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+          {autoExecute && (
+            <div className="mt-3 flex overflow-hidden rounded-md border border-line text-xs">
+              {(["A+", "A", "B", "C"] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => {
+                    setAutoExecuteMinGrade(g);
+                    setSaved(false);
+                  }}
+                  className={`flex-1 py-1.5 transition-colors ${
+                    autoExecuteMinGrade === g ? "bg-signal/20 text-signal-glow" : "text-ink-faint hover:text-ink"
+                  }`}
+                >
+                  Grade {g}+
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,7 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, ImageIcon } from "lucide-react";
+import { ChevronDown, ChevronUp, ImageIcon, Brain, CheckCircle2, XCircle, Lightbulb } from "lucide-react";
 import { formatUsd, timeAgo } from "@/lib/format";
+import { generateTradeReview } from "@/lib/elvoid/review";
 import type { JournalWithSignal } from "@/lib/elvoid/types";
 
 const RESULT_STYLE: Record<string, string> = {
@@ -133,7 +134,7 @@ export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
                 )}
               </button>
               {expanded && (
-                <div className="space-y-2 border-t border-line bg-bg/40 px-4 py-3 text-xs text-ink-muted">
+                <div className="space-y-3 border-t border-line bg-bg/40 px-4 py-3 text-xs text-ink-muted">
                   {e.signal && (
                     <p>
                       Entry sinyal: <span className="mono-num text-ink">{formatUsd(e.signal.entry)}</span> · Confidence saat
@@ -158,6 +159,32 @@ export function JournalView({ entries }: { entries: JournalWithSignal[] }) {
                       />
                     </a>
                   )}
+
+                  {(() => {
+                    const review = generateTradeReview(e);
+                    return (
+                      <div className="space-y-2 rounded-md border border-line bg-bg-raised/50 p-3">
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-ink">
+                          <Brain size={12} className="text-signal-glow" /> AI Review: {review.verdict}
+                        </p>
+                        {review.points.map((p, i) => (
+                          <p key={`p-${i}`} className="flex items-start gap-1.5">
+                            <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-up" /> {p}
+                          </p>
+                        ))}
+                        {review.mistakes.map((m, i) => (
+                          <p key={`m-${i}`} className="flex items-start gap-1.5">
+                            <XCircle size={12} className="mt-0.5 shrink-0 text-down" /> {m}
+                          </p>
+                        ))}
+                        {review.recommendations.map((r, i) => (
+                          <p key={`r-${i}`} className="flex items-start gap-1.5">
+                            <Lightbulb size={12} className="mt-0.5 shrink-0 text-amber" /> {r}
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

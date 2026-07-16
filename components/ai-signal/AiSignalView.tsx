@@ -1,15 +1,20 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Search, Radar, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Search, Radar, Loader2, LineChart, ListChecks } from "lucide-react";
 import clsx from "clsx";
 import { SignalCardPro } from "@/components/ai-signal-pro/SignalCardPro";
+import { ChartAnalysisView } from "@/components/ai-signal-pro/ChartAnalysisView";
 import { Disclaimer } from "@/components/Disclaimer";
 import { SkeletonGrid } from "@/components/ui/Skeleton";
-import type { AiSignal } from "@/lib/elvoid/types";
+import type { AiSignal, OrderType } from "@/lib/elvoid/types";
 
 type Filter = "all" | "long" | "short" | "high";
+type Tab = "chart" | "watchlist";
 
 export function AiSignalView() {
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "watchlist" ? "watchlist" : "chart");
   const [signals, setSignals] = useState<AiSignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -84,13 +89,13 @@ export function AiSignalView() {
     }
   }
 
-  async function handleExecute(signal: AiSignal) {
+  async function handleExecute(signal: AiSignal, orderType: OrderType) {
     setExecutingId(signal.id);
     try {
       await fetch("/api/paper-trader/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signalId: signal.id }),
+        body: JSON.stringify({ signalId: signal.id, orderType }),
       });
       await load();
     } finally {
@@ -109,63 +114,90 @@ export function AiSignalView() {
     <div className="space-y-5">
       <Disclaimer />
 
-      <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-        <div className="flex flex-1 items-center gap-2 rounded-md border border-line bg-bg px-3 py-2">
-          <Search size={14} className="text-ink-faint" />
-          <input
-            value={coinQuery}
-            onChange={(e) => setCoinQuery(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-            placeholder="Analisa coin, mis. BTC"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-ink-faint"
-          />
-          <button
-            onClick={handleAnalyze}
-            disabled={analyzing || !coinQuery.trim()}
-            className="shrink-0 rounded-md bg-signal px-3 py-1.5 text-xs font-medium text-white hover:bg-signal-glow disabled:opacity-50"
-          >
-            {analyzing ? "Menganalisa…" : "Analyze"}
-          </button>
-        </div>
+      <div className="flex gap-2">
         <button
-          onClick={handleScan}
-          disabled={scanning}
-          className="flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-signal/40 px-3.5 py-2 text-xs font-medium text-signal-glow hover:border-signal disabled:opacity-50"
+          onClick={() => setTab("chart")}
+          className={clsx(
+            "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors",
+            tab === "chart" ? "border-signal/50 bg-signal/15 text-signal-glow" : "border-line text-ink-muted hover:text-ink"
+          )}
         >
-          {scanning ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
-          {scanning ? "Scanning market…" : "Scan Market"}
+          <LineChart size={13} /> Chart Analysis
+        </button>
+        <button
+          onClick={() => setTab("watchlist")}
+          className={clsx(
+            "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors",
+            tab === "watchlist" ? "border-signal/50 bg-signal/15 text-signal-glow" : "border-line text-ink-muted hover:text-ink"
+          )}
+        >
+          <ListChecks size={13} /> Watchlist Signals
         </button>
       </div>
 
-      {error && <p className="text-sm text-down">{error}</p>}
+      {tab === "chart" && <ChartAnalysisView />}
 
-      <div className="flex gap-2">
-        {(["all", "long", "short", "high"] as Filter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={clsx(
-              "rounded-full border px-3 py-1 text-xs capitalize",
-              filter === f ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-muted hover:text-ink"
-            )}
-          >
-            {f === "high" ? "High Confidence" : f}
-          </button>
-        ))}
-      </div>
+      {tab === "watchlist" && (
+        <div className="space-y-5">
+          <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+            <div className="flex flex-1 items-center gap-2 rounded-md border border-line bg-bg px-3 py-2">
+              <Search size={14} className="text-ink-faint" />
+              <input
+                value={coinQuery}
+                onChange={(e) => setCoinQuery(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                placeholder="Analisa coin, mis. BTC"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-ink-faint"
+              />
+              <button
+                onClick={handleAnalyze}
+                disabled={analyzing || !coinQuery.trim()}
+                className="shrink-0 rounded-md bg-signal px-3 py-1.5 text-xs font-medium text-white hover:bg-signal-glow disabled:opacity-50"
+              >
+                {analyzing ? "Menganalisa…" : "Analyze"}
+              </button>
+            </div>
+            <button
+              onClick={handleScan}
+              disabled={scanning}
+              className="flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-signal/40 px-3.5 py-2 text-xs font-medium text-signal-glow hover:border-signal disabled:opacity-50"
+            >
+              {scanning ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
+              {scanning ? "Scanning market…" : "Scan Market"}
+            </button>
+          </div>
 
-      {loading ? (
-        <SkeletonGrid count={4} className="sm:grid-cols-1 xl:grid-cols-2" />
-      ) : filtered.length ? (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {filtered.map((s) => (
-            <SignalCardPro key={s.id} signal={s} onExecute={() => handleExecute(s)} executing={executingId === s.id} />
-          ))}
+          {error && <p className="text-sm text-down">{error}</p>}
+
+          <div className="flex gap-2">
+            {(["all", "long", "short", "high"] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={clsx(
+                  "rounded-full border px-3 py-1 text-xs capitalize",
+                  filter === f ? "border-signal bg-signal/10 text-ink" : "border-line text-ink-muted hover:text-ink"
+                )}
+              >
+                {f === "high" ? "High Confidence" : f}
+              </button>
+            ))}
+          </div>
+
+          {loading ? (
+            <SkeletonGrid count={4} className="sm:grid-cols-1 xl:grid-cols-2" />
+          ) : filtered.length ? (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {filtered.map((s) => (
+                <SignalCardPro key={s.id} signal={s} onExecute={(orderType) => handleExecute(s, orderType)} executing={executingId === s.id} />
+              ))}
+            </div>
+          ) : (
+            <p className="py-10 text-center text-sm text-ink-muted">
+              Belum ada sinyal. Klik <strong className="text-ink">Scan Market</strong> atau analisa coin tertentu di atas.
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="py-10 text-center text-sm text-ink-muted">
-          Belum ada sinyal. Klik <strong className="text-ink">Scan Market</strong> atau analisa coin tertentu di atas.
-        </p>
       )}
     </div>
   );

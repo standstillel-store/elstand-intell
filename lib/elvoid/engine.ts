@@ -17,6 +17,8 @@ import {
   scanFundingRate,
   scanOpenInterest,
   scanSmtDivergence,
+  scanMacd,
+  scanStablecoinFlow,
 } from "./scanners";
 
 // ---------------------------------------------------------------------------
@@ -43,9 +45,14 @@ export interface GeneratedSignal {
   reason: string;
   strategy: string;
   scans: ScanResult[];
-  /** Presentational-only extras (FVG, Order Block, Funding, Open Interest, SMT) — see scanners.ts note. Never affects side/entry/sl/tp/confidence. */
+  /** Presentational-only extras (FVG, Order Block, Funding, Open Interest, SMT, MACD, Stablecoin Flow) — see scanners.ts note. Never affects side/entry/sl/tp/confidence. */
   extraReasoning: ScanResult[];
   riskLevel: "low" | "medium" | "high";
+  /** A+/A/B/C — a coarse, at-a-glance read of Confidence + corroboration count + risk level. Not a separate model. */
+  tradeGrade: "A+" | "A" | "B" | "C";
+  /** Estimated probability of reaching a take-profit target before Stop Loss, 15-85 — blended from strategy-calibration history when enough samples exist, otherwise scaled down from Confidence. Complementary with probabilitySl by construction (a simplification: doesn't separately model "invalidated/expired" outcomes). Never a guarantee. */
+  probabilityTp: number;
+  probabilitySl: number;
 }
 
 export interface StrategyCalibration {
@@ -87,6 +94,38 @@ function roundPrice(price: number): number {
   return Math.round(price * 1e9) / 1e9;
 }
 
+/** A+/A/B/C at-a-glance grade — pure re-read of Confidence + corroboration + risk, not a separate model. */
+function computeTradeGrade(confidence: number, corroborating: number, riskLevel: "low" | "medium" | "high"): "A+" | "A" | "B" | "C" {
+  if (confidence >= 82 && corroborating >= 6 && riskLevel !== "high") return "A+";
+  if (confidence >= 70 && corroborating >= 5) return "A";
+  if (confidence >= 55) return "B";
+  return "C";
+}
+
+/**
+ * Probability TP is an ESTIMATE, not a guarantee: blended from the
+ * strategy's historical win rate (when at least 5 closed trades exist for
+ * that exact strategy label) and Confidence, weighted toward real history
+ * as the sample size grows. With no history yet, it's scaled down from
+ * Confidence rather than presented at face value — Confidence measures
+ * "how many things agree right now", not a calibrated hit rate.
+ * Probability SL = 100 - Probability TP by construction; this is a
+ * simplification that treats every trade as a binary TP-or-SL outcome and
+ * doesn't separately model "invalidated" or "expired" exits.
+ */
+function estimateProbabilities(confidence: number, strategy: string, calibration: StrategyCalibration[]): { probabilityTp: number; probabilitySl: number } {
+  const match = calibration.find((c) => c.strategy === strategy);
+  let raw: number;
+  if (match && match.sampleSize >= 5) {
+    const historyWeight = Math.min(0.7, match.sampleSize / 30);
+    raw = match.winRate * historyWeight + confidence * (1 - historyWeight);
+  } else {
+    raw = confidence * 0.85;
+  }
+  const probabilityTp = Math.max(15, Math.min(85, Math.round(raw)));
+  return { probabilityTp, probabilitySl: 100 - probabilityTp };
+}
+
 export function generateSignal(params: {
   symbol: string; // e.g. "BTC"
   currentPrice: number;
@@ -102,6 +141,7 @@ export function generateSignal(params: {
   change24h?: number;
   btcChange24h?: number;
   btcChange7d?: number;
+  stableChange24hUsd?: number;
 }): GeneratedSignal | null {
   const {
     symbol,
@@ -118,6 +158,7 @@ export function generateSignal(params: {
     change24h,
     btcChange24h,
     btcChange7d,
+    stableChange24hUsd,
   } = params;
   if (candles.length < 30 || !currentPrice) return null;
 
@@ -194,6 +235,8 @@ export function generateSignal(params: {
     scanFundingRate(funding),
     scanOpenInterest(funding, change24h),
     scanSmtDivergence({ symbolChange24h: change24h, btcChange24h, btcChange7d }),
+    scanMacd(candles),
+    scanStablecoinFlow(stableChange24hUsd),
   ];
 
   const strategy = classifyStrategy(directional, side);
@@ -202,6 +245,8 @@ export function generateSignal(params: {
   // Confidence never claims certainty — capped well short of 100, same rule
   // the rest of ElVoid AI's scoring engine follows.
   const confidence = Math.max(8, Math.min(92, Math.round(baseConfidence + calibAdj - risk.confidencePenalty)));
+  const tradeGrade = computeTradeGrade(confidence, corroborating, risk.level);
+  const { probabilityTp, probabilitySl } = estimateProbabilities(confidence, strategy, calibration);
 
   const topReasons = directional
     .filter((s) => s.bias === (side === "LONG" ? "bullish" : "bearish") && s.weight > 0)
@@ -232,5 +277,8 @@ export function generateSignal(params: {
     scans: directional,
     extraReasoning,
     riskLevel: risk.level,
+    tradeGrade,
+    probabilityTp,
+    probabilitySl,
   };
 }

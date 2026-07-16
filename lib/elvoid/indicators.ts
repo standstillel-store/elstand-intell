@@ -198,3 +198,43 @@ export function volumeAnomaly(candles: Candle[], period = 20): { ratio: number; 
   const ratio = avg > 0 ? last / avg : 1;
   return { ratio, spiking: ratio >= 1.8 };
 }
+
+export interface MacdReading {
+  macd: number;
+  signal: number;
+  histogram: number;
+  trend: "bullish" | "bearish" | "neutral";
+  /** A fresh cross on the most recent candle — "none" means the current trend has already been running. */
+  crossover: "bullish_cross" | "bearish_cross" | "none";
+}
+
+/** Standard 12/26/9 MACD. `ema()` above returns a full aligned series, so this is a direct composition — no separate warm-up handling needed. */
+export function calcMacd(candles: Candle[], fast = 12, slow = 26, signalPeriod = 9): MacdReading | undefined {
+  if (candles.length < slow + signalPeriod) return undefined;
+  const closes = candles.map((c) => c.close);
+  const emaFast = ema(closes, fast);
+  const emaSlow = ema(closes, slow);
+  const macdLine = emaFast.map((v, i) => v - emaSlow[i]);
+  const signalLine = ema(macdLine, signalPeriod);
+  const histogram = macdLine.map((v, i) => v - signalLine[i]);
+
+  const last = macdLine.length - 1;
+  const prev = last - 1;
+  const macd = macdLine[last];
+  const signal = signalLine[last];
+  const hist = histogram[last];
+
+  let crossover: MacdReading["crossover"] = "none";
+  if (prev >= 0) {
+    if (macdLine[prev] <= signalLine[prev] && macd > signal) crossover = "bullish_cross";
+    if (macdLine[prev] >= signalLine[prev] && macd < signal) crossover = "bearish_cross";
+  }
+
+  return {
+    macd,
+    signal,
+    histogram: hist,
+    trend: hist > 0 ? "bullish" : hist < 0 ? "bearish" : "neutral",
+    crossover,
+  };
+}

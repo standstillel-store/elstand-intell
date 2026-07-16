@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/AppShell";
 import { AiSignalView } from "@/components/ai-signal/AiSignalView";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 
 export const metadata = {
   title: "AI Signal | ELSTAND INTELLIGENCE",
@@ -9,9 +11,11 @@ export default function AiSignalPage() {
   return (
     <AppShell
       title="ElVoid AI Signal"
-      subtitle="Scan S/R, price action, liquidity, trend, volume, whale, news, struktur pasar, dan risiko — sekaligus."
+      subtitle="Chart real-time dengan AI reading otomatis, plus scan seluruh watchlist sekaligus."
     >
-      <AiSignalView />
+      <Suspense fallback={<SkeletonCard lines={8} />}>
+        <AiSignalView />
+      </Suspense>
     </AppShell>
   );
 }

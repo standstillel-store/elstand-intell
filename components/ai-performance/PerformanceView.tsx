@@ -1,6 +1,12 @@
-import { Trophy, TrendingDown, Coins, Target, Brain } from "lucide-react";
+import { Trophy, TrendingDown, Coins, Target, Brain, Clock, Gauge } from "lucide-react";
 import { SectionHeader } from "@/components/SectionHeader";
 import type { PerformanceReport } from "@/lib/elvoid/performance";
+
+function formatHoldTime(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} menit`;
+  if (minutes < 1440) return `${(minutes / 60).toFixed(1)} jam`;
+  return `${(minutes / 1440).toFixed(1)} hari`;
+}
 
 function HighlightCard({
   icon: Icon,
@@ -87,14 +93,37 @@ export function PerformanceView({ report }: { report: PerformanceReport }) {
             tone="up"
           />
         )}
+        {report.avgHoldMinutes !== null && (
+          <HighlightCard
+            icon={Clock}
+            label="Average Hold Time"
+            title={formatHoldTime(report.avgHoldMinutes)}
+            sub="Rata-rata durasi posisi terbuka"
+            tone="neutral"
+          />
+        )}
+        {report.avgConfidence !== null && (
+          <HighlightCard
+            icon={Gauge}
+            label="Average Confidence"
+            title={`${report.avgConfidence.toFixed(1)}%`}
+            sub="Rata-rata confidence saat sinyal dibuka"
+            tone="neutral"
+          />
+        )}
       </div>
 
       <div className="panel flex items-start gap-2.5 p-4 text-xs leading-relaxed text-ink-muted">
         <Brain size={15} className="mt-0.5 shrink-0 text-signal-glow" />
         <p>
-          ElVoid AI menaikkan atau menurunkan Confidence Score untuk strategi yang punya riwayat minimal 5 trade tertutup,
-          dibatasi maksimal ±8 poin — cukup untuk belajar dari histori, tidak cukup untuk mengklaim kepastian. Ini adalah{" "}
-          <strong className="text-ink">probability</strong> berbasis data, bukan jaminan hasil ke depan.
+          <strong className="text-ink">AI Learning:</strong> ElVoid AI menaikkan atau menurunkan Confidence Score
+          untuk strategi yang punya riwayat minimal 5 trade tertutup, dibatasi maksimal ±8 poin — cukup untuk belajar
+          dari histori, tidak cukup untuk mengklaim kepastian. Saat ini kalibrasi berjalan dari{" "}
+          <strong className="text-ink">
+            {report.strategies.reduce((s, x) => s + x.trades, 0)} trade tertutup
+          </strong>{" "}
+          di {report.strategies.length} strategi berbeda — semakin banyak trade, semakin representatif angkanya. Ini
+          adalah <strong className="text-ink">probability</strong> berbasis data, bukan jaminan hasil ke depan.
         </p>
       </div>
 

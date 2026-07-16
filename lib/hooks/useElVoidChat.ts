@@ -1,9 +1,15 @@
 "use client";
 import { useState } from "react";
 
+export interface ChatAction {
+  type: "open_chart";
+  symbol: string;
+}
+
 export interface ChatMsg {
   role: "user" | "assistant";
   text: string;
+  action?: ChatAction;
 }
 
 const GREETING =
@@ -32,7 +38,7 @@ export function useElVoidChat(context: Record<string, unknown>) {
         body: JSON.stringify({ message: text, context }),
       });
       const data = await res.json();
-      setMsgs((m) => [...m, { role: "assistant", text: data.reply ?? "No response." }]);
+      setMsgs((m) => [...m, { role: "assistant", text: data.reply ?? "No response.", action: data.action }]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", text: "Request gagal — cek koneksi atau server logs." }]);
     } finally {
