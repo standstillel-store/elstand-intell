@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, X, Save } from "lucide-react";
 import type { PaperWallet } from "@/lib/elvoid/types";
+import { BinanceCredentialsPanel } from "./BinanceCredentialsPanel";
 
 interface Status {
   supabase: boolean;
@@ -173,6 +174,8 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
           )}
         </div>
       </div>
+
+      <BinanceCredentialsPanel />
 
       <div className="glow-card p-4">
         <h2 className="text-sm font-semibold">Status Integrasi</h2>

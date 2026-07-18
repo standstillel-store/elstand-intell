@@ -17,6 +17,7 @@ import {
   Briefcase,
   Settings,
   BookOpen,
+  CandlestickChart,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ai-signal", label: "AI Signal", icon: Radar },
   { href: "/paper-trader", label: "Paper Trader", icon: Wallet },
+  { href: "/trading", label: "Live Trading", icon: CandlestickChart },
   { href: "/ai-journal", label: "AI Journal", icon: ClipboardList },
   { href: "/scanner", label: "Token Scanner", icon: ScanSearch },
   { href: "/whale", label: "Whale Activity", icon: Waves },

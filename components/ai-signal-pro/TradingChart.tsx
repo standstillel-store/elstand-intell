@@ -47,12 +47,15 @@ export function TradingChart({
   candles,
   levels,
   height = 440,
+  wsUrl,
 }: {
   symbol: string;
   interval: string;
   candles: Candle[];
   levels?: ChartLevels | null;
   height?: number;
+  /** Full WebSocket URL for live candle updates. Defaults to Binance's public Spot mainnet stream (existing behavior) — pass this to point the chart at Testnet/Futures instead (see lib/binance/wsUrl.ts). */
+  wsUrl?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -169,12 +172,14 @@ export function TradingChart({
     }
   }, [levels]);
 
-  // Live updates via Binance's public kline WebSocket stream — no key required.
+  // Live updates via a public kline WebSocket stream — no key required
+  // (works identically on Testnet, Live, Spot, and Futures public streams).
   useEffect(() => {
     if (!symbol || !interval) return;
     setWsStatus("connecting");
     const streamSymbol = symbol.toLowerCase().replace(/usdt$/i, "") + "usdt";
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streamSymbol}@kline_${interval}`);
+    const url = wsUrl ?? `wss://stream.binance.com:9443/ws/${streamSymbol}@kline_${interval}`;
+    const ws = new WebSocket(url);
 
     ws.onopen = () => setWsStatus("live");
     ws.onerror = () => setWsStatus("offline");
@@ -197,7 +202,7 @@ export function TradingChart({
     };
 
     return () => ws.close();
-  }, [symbol, interval]);
+  }, [symbol, interval, wsUrl]);
 
   return (
     <div className="relative">

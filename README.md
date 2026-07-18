@@ -26,6 +26,8 @@ If you plan to share this with other people:
   to a real exchange.** It's a simulation with a virtual wallet — keep it
   that way if you extend it. **Portfolio** is the same paper wallet viewed
   through an allocation lens, not a real wallet-connect integration.
+  **Live Trading is a separate feature** (see below) that does place real
+  orders against Binance Testnet or Live — don't confuse the two pages.
 - The rugpull-risk heuristic is a starting point (liquidity ratios, pool
   age, whale exits, negative news), not a security audit. Always tell users
   to verify independently (check contract, liquidity lock, team, audits).
@@ -67,11 +69,109 @@ production.
 | NewsAPI.org | News feed, feeds rugpull "negative press" + ElVoid AI News Sentiment | Yes — free tier (localhost only; use a paid tier or GNews for production) |
 | ForexFactory calendar feed | Economic calendar (FOMC/CPI/NFP-style high-impact events) | No |
 | Supabase | Persistence for ElVoid AI Paper Trader (signals, journal, statistics, wallet, trade screenshots) | Yes — free tier |
+| Binance Spot/Futures Testnet (or Live) | **Live Trading** page — real account balance, positions, orders, and order execution | Yes — free Testnet key |
 
 Everything degrades gracefully: if a key is missing or an API call fails,
 that widget just shows an empty/"not configured" state instead of crashing
 the page. `FRED_API_KEY` is the only genuinely optional one — without it the
 DXY and M2 cards simply show a placeholder.
+
+## Binance Testnet/Live Trading Engine (Live Trading page)
+
+A separate page (`/trading`, sidebar → **Live Trading**) that connects to
+your own Binance account via API key and places real orders — on Binance's
+**Testnet** by default (free fake funds, real order matching engine), or
+**Live** if you deliberately set `BINANCE_MODE=live`. Everything here is
+new code under `lib/binance/*` and `app/api/binance/*`; it doesn't touch
+the existing `lib/binance.ts` (the key-less public market-data feed the
+rest of the dashboard already used for funding/OI/candles).
+
+**Setup**
+1. Create a free key at [testnet.binancefuture.com](https://testnet.binancefuture.com)
+   (Futures — recommended, this is what Long/Short/leverage/trailing-stop
+   need) or [testnet.binance.vision](https://testnet.binance.vision) (Spot).
+2. Add `BINANCE_API_KEY` / `BINANCE_SECRET_KEY` to `.env.local` (see the
+   table in `.env.local.example` for `BINANCE_MODE` / `BINANCE_MARKET`).
+3. Run `supabase/schema.sql` again (it's additive — safe to re-run) to get
+   the `bn_*` tables the Auto Trader, order audit log, and position
+   metadata need. Without Supabase, manual trading still works fully; only
+   AI Auto Trading and the decision journal need it.
+4. Open `/trading`. Auto Trading is **off** by default — turn it on
+   explicitly from the AI Auto Trading tab once you're ready.
+
+**What it can do**
+- Read: account balance, open positions (with live PnL & liquidation
+  price), open orders, order history, trade history, current price,
+  candlesticks, order book — all live from your Testnet/Live account.
+- Trade: Market, Limit, Stop (stop-limit), Stop Market, Take Profit
+  (limit), Take Profit Market, Trailing Stop — Open Long / Open Short,
+  cancel order, close a position (full or partial), Emergency Close All
+  Positions (also pauses Auto Trading).
+- Manage a position: Move SL to Break Even, Partial/Multiple Take Profit
+  (two native Binance conditional orders — a partial reduce-only TP1, a
+  `closePosition` TP2 that mops up the remainder), Scale Out (partial
+  close), Dynamic SL/TP.
+- Risk: every entry is sized from **Risk % → position size**, hard-capped
+  at 1% of account equity — the order is rejected, not silently resized,
+  if it can't be sized within that cap after exchange lot-size rounding.
+  See `lib/binance/riskManager.ts`.
+- AI Auto Trading: once a minute (client-side while the dashboard is open —
+  see the cron note below), it re-runs the **same ElVoid AI scan/signal
+  engine** the rest of the app uses (`lib/elvoid/engine.ts` — RSI, EMA
+  20/50/200, market structure, liquidity sweep, order block, FVG, funding,
+  open interest, SMT divergence, MACD, news sentiment, whale activity,
+  ...), fed with live candles from your actual trading venue. A trade only
+  opens if it clears **two hard gates**: at least 5 scanners agreeing on
+  direction, and Risk:Reward ≥ 1:3 (otherwise the tick logs "NO TRADE" and
+  moves on — it never forces an entry). Every open position is re-evaluated
+  the same way, plus Auto Exit checks (structure break, CHOCH, order-flow
+  reversal via Binance's own taker-buy/sell kline field, EMA misalignment,
+  liquidity sweep against the position, and a combined
+  News+PriceAction+Structure+OrderFlow reversal check — sentiment alone
+  never closes a trade). See `lib/binance/autoTrader.ts` and
+  `lib/binance/exitConditions.ts`.
+- Every AI decision (entry, rejection, exit, breakeven) is written to
+  `bn_auto_trader_log` and shown in the Decision Journal — nothing happens
+  silently.
+
+**Cron note.** The Trading Dashboard polls
+`/api/binance/auto-trade/tick` client-side once a minute while open — Auto
+Trading works out of the box on any host/plan with no extra setup. For a
+server-side heartbeat that runs even with the dashboard closed, Vercel Cron
+can also hit that route, but **per-minute cadence requires Vercel Pro**
+(Hobby only allows once-a-day cron and will refuse to deploy `* * * * *`).
+Pro users can add a `crons` entry to `vercel.json` themselves; anyone else
+can point an external scheduler (cron-job.org, GitHub Actions, ...) at the
+same URL with an `Authorization: Bearer $CRON_SECRET` header.
+
+**Security.** API secret never reaches the browser — every signed Binance
+call happens in a server Route Handler. The recommended setup is plain env
+vars (never touch a database); Settings → **Binance Trading API** offers an
+optional AES-256-GCM-encrypted database-stored alternative (behind
+`ENCRYPTION_KEY`) for rotating keys without a redeploy. Every order gets a
+unique client order ID, a short double-submit cooldown, and a per-symbol
+in-process lock so two near-simultaneous requests can't double an entry.
+
+**Honest scope notes, in the same spirit as the disclaimers above:**
+- The AI Auto Trader is a **rule-based technical-analysis system**, not a
+  trained ML model and not a profitability guarantee — same caveat as
+  every ElVoid AI signal elsewhere in this app.
+- The estimated liquidation price (shown pre-trade, in the Risk Panel) uses
+  Binance's real per-symbol maintenance-margin brackets but the standard
+  single-position/isolated-margin/no-added-margin/no-funding
+  simplification every retail tool makes — Binance's own `liquidationPrice`
+  field on an already-open position is always the authoritative number,
+  and that's what the Positions table displays.
+- "Order Flow" is a proxy built from Binance kline data's own taker-buy/sell
+  volume field (real exchange data), not raw tick-by-tick footprint data.
+- One-way position mode is assumed (one net position per symbol) — Binance
+  hedge mode (simultaneous Long+Short on one symbol) isn't supported.
+- In Spot mode (`BINANCE_MARKET=spot`), the Order Panel switches to plain
+  Buy/Sell (no leverage, no SL/TP bracket auto-attach — place a separate
+  Stop/Take-Profit order afterward if wanted), and the Positions / Risk /
+  AI Auto Trading tabs show a clear "Futures only" note instead of
+  attempting something that doesn't apply to Spot — balances, market data,
+  and manual order placement/cancellation work fully either way.
 
 ## What's new in the AI Trading Terminal upgrade (2026-07, part 2)
 
@@ -265,6 +365,7 @@ app/
   news/                                Full news feed with sentiment filter
   economic-calendar/                    Full week of macro events
   settings/                              Risk %, integration status, reset
+  trading/                                Live Trading — Binance Testnet/Live dashboard
   methodology/                            How scoring + ElVoid AI works
   api/
     ticker/                                          BTC/ETH/SOL for TopNav
@@ -280,6 +381,12 @@ app/
     ai-performance/                                    Analytics report
     settings/status/                                   Integration status
     token-analysis/                                     Token Analyzer data
+    binance/ (status/ account/ positions/ orders/        Live Trading — real Binance Testnet/Live
+              trades/ price/ klines/ orderbook/ order/     account, order execution, risk calc,
+              position/close/ position/close-all/           AI Auto Trader tick + settings + log
+              leverage/ risk/calculate/ trailing-stop/
+              breakeven/ auto-trade/ auto-trade/tick/
+              auto-trade/log/ emergency-stop/ credentials/)
 components/
   layout/                 TopNav (global top bar)
   ui/                      GlowCard, Badge, LiveDot, Skeleton, AnimatedNumber
@@ -295,16 +402,22 @@ components/
   portfolio/                        Allocation view
   whale/                              Whale Activity view (buy/sell split)
   paper-trader/ ai-journal/ ai-performance/ settings/ news/  Feature components
+  trading/                                                     Live Trading dashboard widgets
+                                                                 (Order Panel, Positions, Risk,
+                                                                  AI Auto Trader, Emergency Controls)
 lib/                      API clients, types, formatting, scoring engine
   elvoid/                 ElVoid AI: scanners, engine, paper trading, math, review
+  binance/                 Live Trading Engine: signed Spot/Futures Testnet/Live client,
+                             risk manager, order guard, auto-trader, exit conditions, news gate
   scanner-categories.ts    Token Scanner's 7 categories (dump/momentum/whale/smart money)
   stablecoins.ts            DefiLlama stablecoin supply
   macro.ts                   FRED DXY-proxy & M2
   alerts.ts                   Liquidity sweep/BOS-CHoCH/whale/funding/news alert detection
   dashboardSnapshot.ts         Aggregates everything the Home dashboard needs
   hooks/useElVoidChat.ts        Shared chat hook (dock + inline panel + chart action)
+  hooks/useBinanceTrading.ts     Live Trading dashboard's data + actions hook
 supabase/
-  schema.sql              Run once in the Supabase SQL editor
+  schema.sql              Run once in the Supabase SQL editor (includes bn_* Binance tables)
 ```
 
 ## Extending the scoring engine

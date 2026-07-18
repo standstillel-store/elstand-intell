@@ -153,3 +153,170 @@ alter table paper_wallet enable row level security;
 --   2. No public INSERT policy needed: uploads go through
 --      /api/paper-trader/journal/screenshot, a server route using the
 --      service-role key, same pattern as every other write in this file.
+
+-- ============================================================================
+-- Binance Testnet/Live Trading Engine (lib/binance/*, app/api/binance/*)
+-- ============================================================================
+-- Everything below this line supports REAL order execution against Binance
+-- Spot/Futures Testnet (or Live, if BINANCE_MODE=live) — a different thing
+-- from ai_signals/ai_journal/paper_wallet above, which stay a pure
+-- simulation. Binance itself remains the source of truth for balances,
+-- positions, and order status (fetched live via signed REST calls); these
+-- tables only hold what Binance doesn't: our own idempotency/audit trail,
+-- auto-trader configuration, per-position strategy metadata, and the
+-- decision journal. Same singleton-row-by-id pattern and same RLS posture
+-- (service-role key only, zero public policies) as every table above.
+
+-- ----------------------------------------------------------------------------
+-- bn_credentials — optional encrypted API key storage (Settings UI path).
+-- The recommended path is still plain env vars (BINANCE_API_KEY /
+-- BINANCE_SECRET_KEY), which never touch this table at all. See
+-- lib/binance/credentials.ts. AES-256-GCM ciphertext only — no plaintext
+-- key ever reaches Postgres, and ENCRYPTION_KEY (env-only) is required to
+-- decrypt, so a DB leak alone is not enough to recover a usable key.
+-- ----------------------------------------------------------------------------
+create table if not exists bn_credentials (
+  id smallint primary key default 1,
+  api_key_encrypted jsonb not null,
+  secret_key_encrypted jsonb not null,
+  updated_at timestamptz not null default now(),
+  constraint bn_credentials_singleton check (id = 1)
+);
+
+-- ----------------------------------------------------------------------------
+-- bn_orders_log — every order ElVoid AI's Trading Engine has placed, keyed
+-- by the client_order_id we generated (unique -> the idempotency guard
+-- lib/binance/orderGuard.ts relies on to reject accidental double-submits).
+-- Binance's own order/orderId is authoritative for live status; this row is
+-- the durable record of *why* the order was placed (manual vs AI, which
+-- strategy, how many confluences, the RR at entry) once Binance's own
+-- history eventually ages out or gets queried per-symbol only.
+-- ----------------------------------------------------------------------------
+create table if not exists bn_orders_log (
+  id uuid primary key default gen_random_uuid(),
+  client_order_id text not null unique,
+  binance_order_id bigint,
+  symbol text not null,
+  market text not null check (market in ('spot', 'futures')),
+  mode text not null check (mode in ('testnet', 'live')),
+  side text not null check (side in ('BUY', 'SELL')),
+  position_side text not null default 'BOTH' check (position_side in ('LONG', 'SHORT', 'BOTH')),
+  order_type text not null,
+  quantity numeric not null,
+  price numeric,
+  stop_price numeric,
+  status text not null default 'NEW',
+  reduce_only boolean not null default false,
+  source text not null default 'manual' check (source in ('manual', 'auto_trader', 'emergency')),
+  strategy text,
+  confluences integer,
+  risk_percent numeric,
+  risk_reward numeric,
+  reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists bn_orders_log_symbol_idx on bn_orders_log (symbol);
+create index if not exists bn_orders_log_created_at_idx on bn_orders_log (created_at desc);
+create index if not exists bn_orders_log_source_idx on bn_orders_log (source);
+
+-- ----------------------------------------------------------------------------
+-- bn_position_meta — strategy metadata for the position currently open on a
+-- symbol (one-way mode assumed, so one row per symbol at a time). Binance's
+-- positionRisk endpoint has no room for "which strategy opened this" or
+-- "has the stop already been moved to breakeven" — this table is exactly
+-- that missing state, read/written every auto-trader tick.
+-- ----------------------------------------------------------------------------
+create table if not exists bn_position_meta (
+  symbol text primary key,
+  side text not null check (side in ('LONG', 'SHORT')),
+  entry_client_order_id text,
+  strategy text,
+  confluences integer,
+  risk_reward numeric,
+  initial_entry numeric,
+  initial_stop numeric,
+  tp1 numeric,
+  tp2 numeric,
+  tp3 numeric,
+  breakeven_moved boolean not null default false,
+  tp1_filled boolean not null default false,
+  tp2_filled boolean not null default false,
+  trailing_active boolean not null default false,
+  opened_by text not null default 'manual' check (opened_by in ('manual', 'auto_trader')),
+  opened_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
+-- bn_auto_trader_settings — single config row (id = 1) for the AI Auto
+-- Trading loop (lib/binance/autoTrader.ts), ticked once a minute by
+-- /api/binance/auto-trade/tick (Vercel Cron — see vercel.json).
+-- ----------------------------------------------------------------------------
+create table if not exists bn_auto_trader_settings (
+  id smallint primary key default 1,
+  enabled boolean not null default false,
+  symbols text[] not null default array['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT'],
+  timeframe text not null default '15m',
+  risk_percent numeric not null default 1,
+  leverage integer not null default 5,
+  min_confluences integer not null default 5,
+  min_risk_reward numeric not null default 3,
+  max_risk_reward numeric not null default 10,
+  max_concurrent_positions integer not null default 3,
+  cooldown_minutes integer not null default 15,
+  running boolean not null default false,
+  last_run_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint bn_auto_trader_settings_singleton check (id = 1),
+  constraint bn_auto_trader_settings_risk_check check (risk_percent > 0 and risk_percent <= 1),
+  constraint bn_auto_trader_settings_confluence_check check (min_confluences >= 1),
+  constraint bn_auto_trader_settings_rr_check check (min_risk_reward >= 3)
+);
+
+insert into bn_auto_trader_settings (id) values (1) on conflict (id) do nothing;
+
+-- ----------------------------------------------------------------------------
+-- bn_auto_trader_log — append-only decision journal. Every tick writes at
+-- least one row per symbol it looked at ("skip_low_confluence",
+-- "entry_opened", "exit_structure_break", ...), which is what the Auto
+-- Trade Log panel and the Trade Monitor's "why did it (not) act" trail
+-- render. Never overwritten — this is the audit trail an autonomous
+-- trading loop needs to be trustworthy.
+-- ----------------------------------------------------------------------------
+create table if not exists bn_auto_trader_log (
+  id uuid primary key default gen_random_uuid(),
+  ran_at timestamptz not null default now(),
+  action text not null,
+  symbol text,
+  side text,
+  detail text not null,
+  meta jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists bn_auto_trader_log_ran_at_idx on bn_auto_trader_log (ran_at desc);
+create index if not exists bn_auto_trader_log_symbol_idx on bn_auto_trader_log (symbol);
+
+-- ----------------------------------------------------------------------------
+-- bn_emergency_stop — global kill-switch (id = 1). When stopped = true, the
+-- auto-trader tick refuses to open new positions (existing positions can
+-- still be closed/managed manually) until cleared from the dashboard.
+-- ----------------------------------------------------------------------------
+create table if not exists bn_emergency_stop (
+  id smallint primary key default 1,
+  stopped boolean not null default false,
+  reason text,
+  updated_at timestamptz not null default now(),
+  constraint bn_emergency_stop_singleton check (id = 1)
+);
+
+insert into bn_emergency_stop (id) values (1) on conflict (id) do nothing;
+
+alter table bn_credentials enable row level security;
+alter table bn_orders_log enable row level security;
+alter table bn_position_meta enable row level security;
+alter table bn_auto_trader_settings enable row level security;
+alter table bn_auto_trader_log enable row level security;
+alter table bn_emergency_stop enable row level security;
