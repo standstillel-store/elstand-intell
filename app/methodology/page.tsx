@@ -78,7 +78,7 @@ export default function MethodologyPage() {
     <main className="min-h-screen">
       <header className="border-b border-line px-4 py-4">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-sm text-ink-muted hover:text-ink">
+          <Link href="/dashboard" className="flex items-center gap-2 text-sm text-ink-muted hover:text-ink">
             <ArrowLeft size={16} /> Back to Dashboard
           </Link>
           <span className="eyebrow text-[10px] tracking-[0.18em] text-ink-faint">Elstand Intelligence</span>

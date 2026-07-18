@@ -63,7 +63,7 @@ export function TopNav() {
   return (
     <header className="fixed inset-x-0 top-0 z-40 hidden h-14 border-b border-line bg-bg/95 backdrop-blur lg:flex">
       <div className="flex w-full items-center gap-6 px-5">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5">
+        <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-signal animate-pulseGlow" />
           <div className="leading-tight">
             <p className="eyebrow text-[9px] tracking-[0.18em] text-ink-faint">ElVoid AI Engine</p>

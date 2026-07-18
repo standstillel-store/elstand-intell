@@ -14,9 +14,13 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ELSTAND INTELLIGENCE | ElVoid AI Crypto Terminal",
+  metadataBase: new URL("https://elstand.ai"),
+  title: {
+    default: "ElStand AI | AI-Powered Crypto Market Intelligence",
+    template: "%s | ElStand AI",
+  },
   description:
-    "ELSTAND INTELLIGENCE is a professional crypto intelligence terminal powered by ElVoid AI: live heatmap, AI trade signals, paper trader, token scanner, whale flow, funding, news, and economic calendar in one dark, fast dashboard.",
+    "ElStand AI is an AI-powered crypto market intelligence platform: AI analysis, technical indicators, a crypto scanner, news sentiment, risk tools, and paper trading.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
