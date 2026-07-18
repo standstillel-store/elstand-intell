@@ -107,7 +107,7 @@ export function useBinanceTrading() {
   }, []);
 
   const refreshPositions = useCallback(async () => {
-    const { data } = await fetchJson<{ positions: PositionInfo[] }>("/api/binance/positions");
+    const { data } = await fetchJson<{ positions: PositionRow[] }>("/api/binance/positions");
     if (mounted.current && data) setPositions(data.positions);
   }, []);
 
