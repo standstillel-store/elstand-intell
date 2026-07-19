@@ -71,6 +71,10 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.3" },
         },
+        dashFlow: {
+          "0%": { strokeDashoffset: "24" },
+          "100%": { strokeDashoffset: "0" },
+        },
       },
       animation: {
         ticker: "ticker 38s linear infinite",
@@ -78,6 +82,7 @@ const config: Config = {
         shimmer: "shimmer 1.6s ease-in-out infinite",
         fadeUp: "fadeUp 0.35s ease-out both",
         blink: "blink 1.4s ease-in-out infinite",
+        dashFlow: "dashFlow 0.7s linear infinite",
       },
     },
   },

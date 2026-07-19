@@ -1,154 +1,163 @@
+import Link from "next/link";
+import type { Metadata } from "next";
+import { Radar, Wallet, ScanSearch, Waves, Newspaper } from "lucide-react";
 import { getDashboardSnapshot } from "@/lib/dashboardSnapshot";
-import { computeTopDecliners, computeVolumeAnomalies } from "@/lib/market-insights";
+import { isRelevantAsset } from "@/lib/asset-filters";
 import { TopNav } from "@/components/layout/TopNav";
 import { Sidebar } from "@/components/Sidebar";
 import { Footer } from "@/components/Footer";
-import { MobileHome } from "@/components/mobile/MobileHome";
-import { MarketOverviewStrip } from "@/components/market/MarketOverviewStrip";
-import { CryptoHeatmap } from "@/components/heatmap/CryptoHeatmap";
-import { SignalCardPro } from "@/components/ai-signal-pro/SignalCardPro";
-import { PaperTraderSummaryCard } from "@/components/paper-trader/PaperTraderSummaryCard";
-import { TokenScannerTeaser } from "@/components/scanner/TokenScannerTeaser";
-import { ElVoidChatPanel } from "@/components/right-rail/ElVoidChatPanel";
+import { NavDrawer } from "@/components/mobile/NavDrawer";
+import { AIChatDock } from "@/components/AIChatDock";
 import { AISummaryCard } from "@/components/right-rail/AISummaryCard";
-import { MacroAlertCard } from "@/components/right-rail/MacroAlertCard";
-import { WhaleAlertCard } from "@/components/right-rail/WhaleAlertCard";
-import { EconomicCalendarMini } from "@/components/right-rail/EconomicCalendarMini";
-import { BreakingNewsMini } from "@/components/right-rail/BreakingNewsMini";
-import { SectionHeader } from "@/components/SectionHeader";
-import Link from "next/link";
-import { ArrowRight, Radar } from "lucide-react";
-import type { Metadata } from "next";
+import { TopMarketOverview } from "@/components/intelligence/TopMarketOverview";
+import { GlobalIntelligenceMap } from "@/components/intelligence/GlobalIntelligenceMap";
+import { WhaleLiquidityPanel } from "@/components/intelligence/WhaleLiquidityPanel";
+import { InstitutionalFlowPanel } from "@/components/intelligence/InstitutionalFlowPanel";
+import { SectorRotationHeatmap } from "@/components/intelligence/SectorRotationHeatmap";
+import { AltcoinScannerTable } from "@/components/intelligence/AltcoinScannerTable";
+import { computeSectorRotation, getSampleSectorRotation } from "@/lib/intelligence/sectorRotation";
+import { buildAltcoinScannerRows, getSampleAltcoinScannerRows } from "@/lib/intelligence/altcoinScanner";
 
 export const metadata: Metadata = {
   title: "Dashboard",
   description:
-    "Your ElStand AI terminal: live crypto heatmap, AI signals, token scanner, whale flow, funding, news, and paper trader in one dashboard.",
+    "ElStand AI Market Intelligence: peta hubungan antar market, whale & liquidity, institutional flow, sector rotation, dan AI summary dalam satu dashboard.",
   robots: { index: false, follow: false },
 };
 
 export const revalidate = 60;
 
+const QUICK_LINKS = [
+  { href: "/ai-signal", label: "AI Signal", icon: Radar },
+  { href: "/paper-trader", label: "Paper Trader", icon: Wallet },
+  { href: "/scanner", label: "Token Scanner", icon: ScanSearch },
+  { href: "/whale", label: "Whale Activity", icon: Waves },
+  { href: "/news", label: "News", icon: Newspaper },
+];
+
 export default async function Home() {
   const snap = await getDashboardSnapshot();
   const { base } = snap;
-  const { markets, global, funding, whales, fng, news, calendar, pumpCandidates, rugpullRisks } = base;
+  const { markets, global, funding, whales, fng, news } = base;
 
-  // Mobile-only derived reads — cheap pure functions, no extra fetch.
-  const topDecliners = computeTopDecliners(markets, 5);
-  const volumeAnomalies = computeVolumeAnomalies(rugpullRisks, 5);
+  const btcMarket = markets.find((m) => m.symbol.toLowerCase() === "btc");
+  const ethMarket = markets.find((m) => m.symbol.toLowerCase() === "eth");
 
-  const topSignal = [...snap.openSignals].sort((a, b) => b.confidence - a.confidence)[0];
+  const altMarkets = markets
+    .filter((m) => isRelevantAsset(m))
+    .filter((m) => m.symbol.toLowerCase() !== "btc" && m.symbol.toLowerCase() !== "eth")
+    .slice(0, 30);
+  const altChange24h = altMarkets.length
+    ? altMarkets.reduce((s, m) => s + (m.price_change_percentage_24h_in_currency ?? 0), 0) / altMarkets.length
+    : undefined;
+  const altcoinMarketCapUsd =
+    global?.total_market_cap.usd !== undefined
+      ? Math.max(0, global.total_market_cap.usd - (btcMarket?.market_cap ?? 0) - (ethMarket?.market_cap ?? 0))
+      : undefined;
+
+  const sectorRotation = markets.length ? computeSectorRotation(markets) : getSampleSectorRotation();
+  const topSector = [...sectorRotation].sort((a, b) => b.momentum - a.momentum)[0];
+  const scannerRows = markets.length ? buildAltcoinScannerRows(markets, snap.smartMoneyAccumulation) : getSampleAltcoinScannerRows();
 
   return (
-    <main className="min-h-screen">
-      {/* Mobile Home — below lg breakpoint */}
-      <div className="lg:hidden">
-        <MobileHome
-          tagline={snap.tagline}
-          fng={fng}
-          btcDominance={global?.market_cap_percentage.btc}
-          altseason={snap.altseason}
-          totalMcUsd={global?.total_market_cap.usd}
-          mcChange24h={global?.market_cap_change_percentage_24h_usd}
-          macro={snap.macro}
-          whaleSummary={snap.whaleSummary}
-          whales={whales}
-          pumpCandidates={pumpCandidates}
-          topDecliners={topDecliners}
-          rugpullRisks={rugpullRisks}
-          volumeAnomalies={volumeAnomalies}
-          news={news}
-          calendar={calendar}
-          paperWallet={snap.paperWallet}
-          paperStats={snap.paperStats}
-          newSignalCount={snap.openSignals.length}
-        />
-      </div>
+    <main className="min-h-screen lg:pt-14">
+      <TopNav />
+      <Sidebar />
 
-      {/* Desktop terminal layout — lg and up */}
-      <div className="hidden lg:block lg:pt-14">
-        <TopNav />
-        <Sidebar />
-
-        <div className="lg:pl-60">
-          <div className="mx-auto max-w-[1680px] space-y-5 px-5 py-5">
-            <div className="rounded-lg border border-amber/30 bg-amber/5 px-4 py-3 text-xs text-amber">
-              ElVoid AI menyajikan sinyal berbasis data pasar publik secara rule-based dan transparan — bukan model
-              black-box, bukan prediksi harga. Ini bukan nasihat keuangan; selalu lakukan riset mandiri sebelum
-              mengambil keputusan trading.
-            </div>
-
-            <MarketOverviewStrip
-              fng={fng ? { value: fng.now.value, classification: fng.now.classification } : undefined}
-              btcDominance={global?.market_cap_percentage.btc}
-              altseason={snap.altseason}
-              totalMarketCapUsd={global?.total_market_cap.usd}
-              marketCapChange24h={global?.market_cap_change_percentage_24h_usd}
-              macro={snap.macro}
-              stablecoin={snap.stablecoin}
-              dxy={snap.dxy}
-              m2={snap.m2}
-            />
-
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_380px]">
-              {/* Center column */}
-              <div className="min-w-0 space-y-5">
-                <CryptoHeatmap markets={markets} rugpullRisks={rugpullRisks} smartMoneyAccumulation={snap.smartMoneyAccumulation} />
-
-                <div>
-                  <SectionHeader code="SIG" title="AI Signal" hint={`${snap.openSignals.length} sinyal aktif`} />
-                  {topSignal ? (
-                    <SignalCardPro signal={topSignal} />
-                  ) : (
-                    <div className="glow-card flex flex-col items-center justify-center gap-3 p-8 text-center">
-                      <Radar size={22} className="text-ink-faint" />
-                      <p className="text-sm text-ink-muted">Belum ada sinyal aktif. Jalankan scan untuk menghasilkan sinyal baru.</p>
-                      <Link href="/ai-signal" className="rounded-md bg-signal px-4 py-2 text-xs font-medium text-white hover:bg-signal-glow">
-                        Buka AI Signal
-                      </Link>
-                    </div>
-                  )}
-                  {snap.openSignals.length > 1 && (
-                    <Link
-                      href="/ai-signal"
-                      className="mt-2 flex items-center justify-center gap-1.5 rounded-md border border-line py-2 text-xs text-ink-muted hover:border-signal/40 hover:text-ink"
-                    >
-                      Lihat semua {snap.openSignals.length} sinyal <ArrowRight size={12} />
-                    </Link>
-                  )}
-                </div>
-
-                <PaperTraderSummaryCard wallet={snap.paperWallet} stats={snap.paperStats} equityCurve={snap.equityCurve} recentTrades={snap.recentTrades} />
-
-                <TokenScannerTeaser
-                  data={{
-                    pump: pumpCandidates,
-                    dump: snap.dumpCandidates,
-                    rugpull: rugpullRisks,
-                    smartMoney: snap.smartMoneyAccumulation,
-                    momentum: snap.highMomentum,
-                    whaleBuying: snap.whaleBuying,
-                    whaleSelling: snap.whaleSelling,
-                  }}
-                />
-              </div>
-
-              {/* Right rail */}
-              <div className="space-y-5">
-                <ElVoidChatPanel context={{ newsCount: news.length, fundingCount: funding.length }} />
-                <AISummaryCard summary={snap.aiSummary} />
-                <MacroAlertCard macro={snap.macro} />
-                <WhaleAlertCard summary={snap.whaleSummary} transfers={whales} />
-                <EconomicCalendarMini events={calendar} />
-                <BreakingNewsMini news={news} />
-              </div>
-            </div>
-          </div>
-
-          <Footer />
+      {/* Mobile header — desktop uses TopNav + Sidebar above instead */}
+      <div className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur lg:hidden">
+        <NavDrawer />
+        <span className="h-2 w-2 rounded-full bg-signal animate-pulseGlow" />
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-bold tracking-tight">ELSTAND</span>
+          <span className="text-[10px] font-semibold tracking-wide text-ink-faint">INTEL</span>
         </div>
       </div>
+
+      <div className="lg:pl-60">
+        <div className="mx-auto max-w-[1680px] space-y-5 px-4 py-5 lg:px-5">
+          <div className="rounded-lg border border-amber/30 bg-amber/5 px-4 py-3 text-xs leading-relaxed text-amber">
+            ElStand AI menyajikan analisis hubungan antar market berbasis data publik secara rule-based dan transparan —
+            bukan model black-box, bukan sinyal beli/jual, dan bukan jaminan keuntungan. Selalu lakukan riset mandiri
+            sebelum mengambil keputusan.
+          </div>
+
+          <TopMarketOverview
+            btc={
+              btcMarket
+                ? {
+                    price: btcMarket.current_price,
+                    change24h: btcMarket.price_change_percentage_24h_in_currency,
+                    change7d: btcMarket.price_change_percentage_7d_in_currency,
+                  }
+                : undefined
+            }
+            eth={
+              ethMarket
+                ? {
+                    price: ethMarket.current_price,
+                    change24h: ethMarket.price_change_percentage_24h_in_currency,
+                    change7d: ethMarket.price_change_percentage_7d_in_currency,
+                  }
+                : undefined
+            }
+            totalMarketCapUsd={global?.total_market_cap.usd}
+            marketCapChange24h={global?.market_cap_change_percentage_24h_usd}
+            btcDominance={global?.market_cap_percentage.btc}
+            fng={fng ? { value: fng.now.value, classification: fng.now.classification } : undefined}
+            dxyChangePct={snap.dxy?.changePct}
+          />
+
+          <GlobalIntelligenceMap
+            live={{
+              totalMarketCapUsd: global?.total_market_cap.usd,
+              totalMarketCapChange24h: global?.market_cap_change_percentage_24h_usd,
+              btcPrice: btcMarket?.current_price,
+              btcChange24h: btcMarket?.price_change_percentage_24h_in_currency,
+              btcChange7d: btcMarket?.price_change_percentage_7d_in_currency,
+              btcDominance: global?.market_cap_percentage.btc,
+              ethPrice: ethMarket?.current_price,
+              ethChange24h: ethMarket?.price_change_percentage_24h_in_currency,
+              ethChange7d: ethMarket?.price_change_percentage_7d_in_currency,
+              altcoinChange24h: altChange24h,
+              altcoinMarketCapUsd,
+              topSectorLabel: topSector ? `${topSector.sector} · ${topSector.trendLabel}` : undefined,
+              dxyValue: snap.dxy?.value,
+              dxyChangePct: snap.dxy?.changePct,
+            }}
+          />
+
+          <WhaleLiquidityPanel transfers={whales} whaleSummary={snap.whaleSummary} funding={funding} liquiditySymbol="BTCUSDT" />
+
+          <InstitutionalFlowPanel smartMoney={snap.smartMoneyAccumulation} />
+
+          <SectorRotationHeatmap rows={sectorRotation} />
+
+          <AISummaryCard summary={snap.aiSummary} />
+
+          <AltcoinScannerTable rows={scannerRows} />
+
+          <div>
+            <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-faint">Lainnya dari ElStand AI</p>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+              {QUICK_LINKS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="glow-card flex items-center gap-2 px-3 py-2.5 text-xs text-ink-muted hover:text-ink"
+                >
+                  <item.icon size={14} className="shrink-0 text-signal-glow" />
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <Footer />
+      </div>
+
+      <AIChatDock context={{ newsCount: news.length, fundingCount: funding.length }} />
     </main>
   );
 }
