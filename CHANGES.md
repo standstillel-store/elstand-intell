@@ -1,5 +1,21 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.1 — Animasi flow di garis penghubung
+
+- Garis di `GlobalIntelligenceMap` sekarang solid + glow (bukan dash
+  "marching ants" lagi), dengan **3 partikel/bubble kecil yang mengalir
+  terus-menerus** di sepanjang tiap garis (pakai SVG `animateMotion` +
+  `mpath` native — tanpa dependency tambahan), meniru efek "liquidity
+  mengalir" seperti referensi. Garis/node aktif (hover/klik) dapat partikel
+  lebih besar, lebih terang, lebih cepat; garis idle tetap mengalir pelan
+  supaya peta terasa hidup terus, bukan cuma saat disentuh.
+- Menghormati `prefers-reduced-motion`: kalau user mengaktifkan itu di OS,
+  partikel tidak dirender (garis tetap terlihat, cuma tanpa gerakan).
+- Tidak menambahkan angka $ di garis (seperti di beberapa referensi) karena
+  itu akan jadi data fiktif untuk hubungan macro→crypto yang sifatnya
+  kausal, bukan aliran dana yang terukur — konsisten dengan aturan
+  "no dummy data" dari brief sebelumnya.
+
 ## V2 — Global Intelligence Map rebuild
 
 Fokus V2: peta jadi sistem real-time interaktif, bukan tampilan statis.

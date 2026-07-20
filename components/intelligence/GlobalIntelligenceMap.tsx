@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { SectionHeader } from "@/components/SectionHeader";
 import { LiveDot } from "@/components/ui/LiveDot";
@@ -46,6 +46,18 @@ interface PathModel {
   touchesActive: boolean;
 }
 
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return reduced;
+}
+
 export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
   const nodes = buildMarketMapNodes(live);
   const [activeId, setActiveId] = useState<MarketMapNodeId | null>(null);
@@ -54,6 +66,7 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Partial<Record<MarketMapNodeId, HTMLButtonElement | null>>>({});
   const [paths, setPaths] = useState<PathModel[]>([]);
+  const reducedMotion = usePrefersReducedMotion();
 
   const stateRef = useRef({ nodes, activeId });
   stateRef.current = { nodes, activeId };
@@ -189,20 +202,41 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
       </div>
 
       <div ref={containerRef} className="relative space-y-3 py-2">
-        <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full">
-          {paths.map((p) => (
-            <path
-              key={p.key}
-              d={p.d}
-              fill="none"
-              stroke={p.touchesActive ? TONE_STROKE[p.tone] : "#23262F"}
-              strokeWidth={p.touchesActive ? 2 : 1.5}
-              strokeOpacity={p.touchesActive ? 0.95 : 0.55}
-              strokeDasharray="5 7"
-              strokeLinecap="round"
-              className={p.touchesActive ? "animate-dashFlow" : "animate-dashFlowSlow"}
-            />
-          ))}
+        <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+          {paths.map((p) => {
+            const pathId = `edge-${p.key}`;
+            const lineColor = p.touchesActive ? TONE_STROKE[p.tone] : "#3A3F4B";
+            const particleColor = TONE_STROKE[p.tone];
+            const duration = p.touchesActive ? 1.6 : 3.4;
+            return (
+              <g key={p.key}>
+                {/* soft glow underlay */}
+                <path
+                  d={p.d}
+                  id={pathId}
+                  fill="none"
+                  stroke={lineColor}
+                  strokeWidth={p.touchesActive ? 6 : 3.5}
+                  strokeOpacity={p.touchesActive ? 0.16 : 0.07}
+                  strokeLinecap="round"
+                />
+                {/* core line */}
+                <path d={p.d} fill="none" stroke={lineColor} strokeWidth={p.touchesActive ? 1.75 : 1.25} strokeOpacity={p.touchesActive ? 0.9 : 0.45} strokeLinecap="round" />
+
+                {/* flowing particles — a small stream of dots travels the path on a loop, like liquidity moving downstream */}
+                {!reducedMotion &&
+                  [0, 1, 2].map((i) => (
+                    <g key={i}>
+                      <circle r={p.touchesActive ? 4.5 : 3} fill={particleColor} opacity={p.touchesActive ? 0.25 : 0.14} />
+                      <circle r={p.touchesActive ? 2.2 : 1.5} fill={particleColor} opacity={p.touchesActive ? 1 : 0.65} />
+                      <animateMotion dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / 3}s`}>
+                        <mpath href={`#${pathId}`} />
+                      </animateMotion>
+                    </g>
+                  ))}
+              </g>
+            );
+          })}
         </svg>
 
         <div className="flex justify-center">{renderNode("macro", { wide: true })}</div>
