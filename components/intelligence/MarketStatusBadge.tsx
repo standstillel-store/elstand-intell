@@ -1,13 +1,14 @@
 import clsx from "clsx";
-import type { MarketStatus } from "@/lib/intelligence/shared";
+import type { SentimentStatus } from "@/lib/intelligence/globalSentiment";
 
-const CONFIG: Record<MarketStatus, { label: string; dot: string; classes: string }> = {
+const CONFIG: Record<SentimentStatus, { label: string; dot: string; classes: string }> = {
   "risk-on": { label: "Risk On", dot: "bg-up", classes: "border-up/30 bg-up/10 text-up" },
-  neutral: { label: "Neutral", dot: "bg-amber", classes: "border-amber/30 bg-amber/10 text-amber" },
   "risk-off": { label: "Risk Off", dot: "bg-down", classes: "border-down/30 bg-down/10 text-down" },
+  neutral: { label: "Neutral", dot: "bg-ink-faint", classes: "border-line bg-bg-surface text-ink-muted" },
+  transition: { label: "Transition", dot: "bg-amber", classes: "border-amber/30 bg-amber/10 text-amber" },
 };
 
-export function MarketStatusBadge({ status, size = "md" }: { status: MarketStatus; size?: "sm" | "md" }) {
+export function MarketStatusBadge({ status, size = "md" }: { status: SentimentStatus; size?: "sm" | "md" }) {
   const cfg = CONFIG[status];
   return (
     <span

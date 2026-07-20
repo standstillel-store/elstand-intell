@@ -17,15 +17,25 @@ import { SectorRotationHeatmap } from "@/components/intelligence/SectorRotationH
 import { AltcoinScannerTable } from "@/components/intelligence/AltcoinScannerTable";
 import { computeSectorRotation, getSampleSectorRotation } from "@/lib/intelligence/sectorRotation";
 import { buildAltcoinScannerRows, getSampleAltcoinScannerRows } from "@/lib/intelligence/altcoinScanner";
+import { getUsdReading } from "@/lib/intelligence/sources/usd";
+import { getGoldReading } from "@/lib/intelligence/sources/gold";
+import { getStocksReading } from "@/lib/intelligence/sources/stocks";
+import { getCryptoPanicNews } from "@/lib/intelligence/sources/cryptoNews";
+import { getMacroEventsView, getNextHighImpactEvent } from "@/lib/intelligence/macroEvents";
+import { deriveGlobalSentiment } from "@/lib/intelligence/globalSentiment";
+import { deriveAssetWhaleNote } from "@/lib/intelligence/whaleLiquidity";
 
 export const metadata: Metadata = {
   title: "Dashboard",
   description:
-    "ElStand AI Market Intelligence: peta hubungan antar market, whale & liquidity, institutional flow, sector rotation, dan AI summary dalam satu dashboard.",
+    "ElStand AI Market Intelligence: Global Intelligence Map real-time, whale & liquidity, institutional flow, sector rotation, dan AI summary dalam satu dashboard.",
   robots: { index: false, follow: false },
 };
 
-export const revalidate = 60;
+// Fastest node TTL in the map is 30s (see lib/intelligence/sources/*) — this
+// keeps the page itself from serving a stale ISR snapshot for longer than
+// that, so each source's own cached() TTL actually gets a chance to expire.
+export const revalidate = 30;
 
 const QUICK_LINKS = [
   { href: "/ai-signal", label: "AI Signal", icon: Radar },
@@ -36,28 +46,72 @@ const QUICK_LINKS = [
 ];
 
 export default async function Home() {
-  const snap = await getDashboardSnapshot();
+  const [snap, usd, gold, stocks, cryptoNews] = await Promise.all([
+    getDashboardSnapshot(),
+    getUsdReading(),
+    getGoldReading(),
+    getStocksReading(),
+    getCryptoPanicNews(),
+  ]);
   const { base } = snap;
-  const { markets, global, funding, whales, fng, news } = base;
+  const { markets, global, funding, whales, fng, news, calendar } = base;
 
   const btcMarket = markets.find((m) => m.symbol.toLowerCase() === "btc");
   const ethMarket = markets.find((m) => m.symbol.toLowerCase() === "eth");
 
   const altMarkets = markets
     .filter((m) => isRelevantAsset(m))
-    .filter((m) => m.symbol.toLowerCase() !== "btc" && m.symbol.toLowerCase() !== "eth")
-    .slice(0, 30);
-  const altChange24h = altMarkets.length
-    ? altMarkets.reduce((s, m) => s + (m.price_change_percentage_24h_in_currency ?? 0), 0) / altMarkets.length
+    .filter((m) => m.symbol.toLowerCase() !== "btc" && m.symbol.toLowerCase() !== "eth");
+  const altSample = altMarkets.slice(0, 30);
+  const altChange24h = altSample.length
+    ? altSample.reduce((s, m) => s + (m.price_change_percentage_24h_in_currency ?? 0), 0) / altSample.length
     : undefined;
   const altcoinMarketCapUsd =
     global?.total_market_cap.usd !== undefined
       ? Math.max(0, global.total_market_cap.usd - (btcMarket?.market_cap ?? 0) - (ethMarket?.market_cap ?? 0))
       : undefined;
 
+  const rankedAlts = altMarkets.filter((m) => m.price_change_percentage_24h_in_currency !== undefined);
+  const topGainer = rankedAlts.length
+    ? [...rankedAlts].sort((a, b) => (b.price_change_percentage_24h_in_currency ?? 0) - (a.price_change_percentage_24h_in_currency ?? 0))[0]
+    : undefined;
+  const topLoser = rankedAlts.length
+    ? [...rankedAlts].sort((a, b) => (a.price_change_percentage_24h_in_currency ?? 0) - (b.price_change_percentage_24h_in_currency ?? 0))[0]
+    : undefined;
+
+  // Derived for real from data already on hand — not in CoinGecko's /global
+  // response by default, but both are simple, honest sums/ratios over `markets`.
+  const totalVolume24hUsd = markets.length ? markets.reduce((s, m) => s + (m.total_volume ?? 0), 0) : undefined;
+  const ethDominance =
+    global?.total_market_cap.usd && ethMarket?.market_cap ? (ethMarket.market_cap / global.total_market_cap.usd) * 100 : undefined;
+
   const sectorRotation = markets.length ? computeSectorRotation(markets) : getSampleSectorRotation();
-  const topSector = [...sectorRotation].sort((a, b) => b.momentum - a.momentum)[0];
   const scannerRows = markets.length ? buildAltcoinScannerRows(markets, snap.smartMoneyAccumulation) : getSampleAltcoinScannerRows();
+
+  const macroEvents = getMacroEventsView(calendar);
+  const nextHighImpact = getNextHighImpactEvent(calendar);
+  const newsItems = cryptoNews ?? news;
+
+  const stocksChangePct = stocks?.indices.length
+    ? stocks.indices.reduce((s, i) => s + (i.changePct ?? 0), 0) / stocks.indices.length
+    : undefined;
+
+  const sentiment = deriveGlobalSentiment({
+    fngValue: fng?.now.value,
+    mcChange24h: global?.market_cap_change_percentage_24h_usd,
+    dxyChangePct: usd?.changePct,
+    goldChangePct: gold?.changePct,
+    stocksChangePct,
+    btcChange24h: btcMarket?.price_change_percentage_24h_in_currency,
+    btcChange7d: btcMarket?.price_change_percentage_7d_in_currency,
+    altcoinChange24h: altChange24h,
+    imminentHighImpactEvent: nextHighImpact,
+  });
+
+  const btcFunding = funding.find((f) => f.symbol.toUpperCase() === "BTCUSDT");
+  const ethFunding = funding.find((f) => f.symbol.toUpperCase() === "ETHUSDT");
+  const btcWhaleNote = deriveAssetWhaleNote(whales, ["BTC"]);
+  const ethWhaleNote = deriveAssetWhaleNote(whales, ["ETH", "WETH"]);
 
   return (
     <main className="min-h-screen lg:pt-14">
@@ -105,25 +159,53 @@ export default async function Home() {
             marketCapChange24h={global?.market_cap_change_percentage_24h_usd}
             btcDominance={global?.market_cap_percentage.btc}
             fng={fng ? { value: fng.now.value, classification: fng.now.classification } : undefined}
-            dxyChangePct={snap.dxy?.changePct}
+            sentiment={sentiment}
           />
 
           <GlobalIntelligenceMap
             live={{
+              sentiment,
+              macroEvents,
+              newsItems,
+              usd,
+              gold,
+              stocks,
               totalMarketCapUsd: global?.total_market_cap.usd,
               totalMarketCapChange24h: global?.market_cap_change_percentage_24h_usd,
-              btcPrice: btcMarket?.current_price,
-              btcChange24h: btcMarket?.price_change_percentage_24h_in_currency,
-              btcChange7d: btcMarket?.price_change_percentage_7d_in_currency,
+              totalVolume24hUsd,
               btcDominance: global?.market_cap_percentage.btc,
-              ethPrice: ethMarket?.current_price,
-              ethChange24h: ethMarket?.price_change_percentage_24h_in_currency,
-              ethChange7d: ethMarket?.price_change_percentage_7d_in_currency,
-              altcoinChange24h: altChange24h,
-              altcoinMarketCapUsd,
-              topSectorLabel: topSector ? `${topSector.sector} · ${topSector.trendLabel}` : undefined,
-              dxyValue: snap.dxy?.value,
-              dxyChangePct: snap.dxy?.changePct,
+              ethDominance,
+              btc: btcMarket
+                ? {
+                    price: btcMarket.current_price,
+                    change24h: btcMarket.price_change_percentage_24h_in_currency,
+                    change7d: btcMarket.price_change_percentage_7d_in_currency,
+                    volume24h: btcMarket.total_volume,
+                  }
+                : undefined,
+              eth: ethMarket
+                ? {
+                    price: ethMarket.current_price,
+                    change24h: ethMarket.price_change_percentage_24h_in_currency,
+                    change7d: ethMarket.price_change_percentage_7d_in_currency,
+                    volume24h: ethMarket.total_volume,
+                  }
+                : undefined,
+              btcFundingRate: btcFunding?.lastFundingRate,
+              btcOpenInterestUsd: btcFunding?.openInterestValue,
+              ethFundingRate: ethFunding?.lastFundingRate,
+              ethOpenInterestUsd: ethFunding?.openInterestValue,
+              fngValue: fng?.now.value,
+              btcWhaleNote,
+              ethWhaleNote,
+              altseasonIndex: snap.altseason?.index,
+              altcoinTopGainer: topGainer
+                ? { symbol: topGainer.symbol.toUpperCase(), change24h: topGainer.price_change_percentage_24h_in_currency ?? 0 }
+                : undefined,
+              altcoinTopLoser: topLoser
+                ? { symbol: topLoser.symbol.toUpperCase(), change24h: topLoser.price_change_percentage_24h_in_currency ?? 0 }
+                : undefined,
+              sectorRotation,
             }}
           />
 

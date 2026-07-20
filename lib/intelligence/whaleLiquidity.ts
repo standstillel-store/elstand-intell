@@ -144,3 +144,18 @@ export function getSampleLiquidityReading(): LiquidityReading {
     sample: true,
   };
 }
+
+/**
+ * Short whale-activity note for a single asset, for the map's BTC/ETH node
+ * drawers. Returns undefined (not a fabricated note) when nothing for that
+ * asset was seen in the tracked feed — e.g. BTC today, since lib/alchemy.ts
+ * only watches ERC-20 tokens (WETH stands in for ETH, native BTC isn't
+ * tracked yet).
+ */
+export function deriveAssetWhaleNote(transfers: WhaleTransfer[], assetSymbols: string[]): string | undefined {
+  const matches = transfers.filter((t) => assetSymbols.some((s) => t.asset.toUpperCase() === s.toUpperCase()));
+  if (!matches.length) return undefined;
+  const totalUsd = matches.reduce((s, t) => s + t.valueUsd, 0);
+  const largest = [...matches].sort((a, b) => b.valueUsd - a.valueUsd)[0];
+  return `${matches.length} transfer besar (${formatWhaleUsd(totalUsd)} total), terbesar ${formatWhaleUsd(largest.valueUsd)}`;
+}

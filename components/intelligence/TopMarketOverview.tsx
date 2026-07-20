@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import { GlowCard } from "@/components/ui/GlowCard";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { formatUsd, formatPct } from "@/lib/format";
-import { deriveTrend, deriveMarketStatus } from "@/lib/intelligence/shared";
+import { deriveTrend } from "@/lib/intelligence/shared";
+import type { GlobalSentimentReading } from "@/lib/intelligence/globalSentiment";
 import { MarketStatusBadge } from "./MarketStatusBadge";
 
 function Card({
@@ -43,7 +44,7 @@ export interface TopMarketOverviewProps {
   marketCapChange24h?: number;
   btcDominance?: number;
   fng?: { value: number; classification: string };
-  dxyChangePct?: number;
+  sentiment: GlobalSentimentReading;
 }
 
 export function TopMarketOverview({
@@ -53,13 +54,13 @@ export function TopMarketOverview({
   marketCapChange24h,
   btcDominance,
   fng,
-  dxyChangePct,
+  sentiment,
 }: TopMarketOverviewProps) {
   const btcTrend = deriveTrend(btc?.change24h, btc?.change7d);
   const ethTrend = deriveTrend(eth?.change24h, eth?.change7d);
   const mcTone: "up" | "down" | "neutral" = marketCapChange24h === undefined ? "neutral" : marketCapChange24h >= 0 ? "up" : "down";
   const fngTone: "up" | "down" | "amber" = fng ? (fng.value >= 55 ? "up" : fng.value <= 45 ? "down" : "amber") : "amber";
-  const marketStatus = deriveMarketStatus({ fngValue: fng?.value, mcChange24h: marketCapChange24h, dxyChangePct });
+  const statusReason = sentiment.reasons[0]?.text ?? sentiment.note ?? "Menunggu sinyal";
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -94,9 +95,9 @@ export function TopMarketOverview({
           <Activity size={13} />
           <span className="eyebrow text-[10px] uppercase tracking-wider">Market Status</span>
         </div>
-        <MarketStatusBadge status={marketStatus.status} />
-        <p className="mt-1.5 truncate text-[11px] text-ink-faint" title={marketStatus.reason}>
-          {marketStatus.reason}
+        <MarketStatusBadge status={sentiment.status} />
+        <p className="mt-1.5 truncate text-[11px] text-ink-faint" title={statusReason}>
+          {statusReason} · {sentiment.confidence}% confidence
         </p>
       </GlowCard>
     </div>

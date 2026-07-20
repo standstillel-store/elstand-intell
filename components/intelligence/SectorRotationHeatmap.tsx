@@ -56,7 +56,7 @@ export function SectorRotationHeatmap({ rows }: { rows: SectorRotationRow[] }) {
                 <span className="font-medium text-ink">{row.sector}</span> — {row.trendLabel}, momentum {Math.round(row.momentum)}
                 /100, volume 24h {formatUsd(row.volume24hUsd)}
                 {row.coinCount ? ` dari ${row.coinCount} koin terpantau` : ""}.
-                {row.sample && " (data contoh)"}
+                {row.sample && " (menunggu API)"}
               </p>
             );
           })()}

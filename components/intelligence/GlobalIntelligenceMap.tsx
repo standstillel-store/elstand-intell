@@ -1,16 +1,11 @@
 "use client";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
-import { Info } from "lucide-react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { LiveDot } from "@/components/ui/LiveDot";
-import {
-  MARKET_MAP_EDGES,
-  buildMarketMapNodes,
-  type MarketMapLiveInputs,
-  type MarketMapNodeId,
-} from "@/lib/intelligence/marketMap";
+import { MarketStatusBadge } from "./MarketStatusBadge";
+import { NodeDrawer } from "./ui/NodeDrawer";
+import { buildMarketMapNodes, MARKET_MAP_EDGES, type MarketMapLiveInputs, type MarketMapNodeId } from "@/lib/intelligence/marketMap";
 import type { DisplayTone } from "@/lib/intelligence/shared";
 
 const TONE_BORDER: Record<DisplayTone, string> = {
@@ -19,7 +14,7 @@ const TONE_BORDER: Record<DisplayTone, string> = {
   amber: "border-amber/30",
   neutral: "border-line",
 };
-const TONE_BORDER_SELECTED: Record<DisplayTone, string> = {
+const TONE_BORDER_ACTIVE: Record<DisplayTone, string> = {
   up: "border-up shadow-glow-up",
   down: "border-down shadow-glow-down",
   amber: "border-amber",
@@ -44,35 +39,31 @@ const TONE_STROKE: Record<DisplayTone, string> = {
   neutral: "#6E5BFF",
 };
 
-function narrativeKey(tone: DisplayTone): "up" | "down" | "neutral" {
-  return tone === "up" ? "up" : tone === "down" ? "down" : "neutral";
-}
-
 interface PathModel {
   key: string;
   d: string;
-  active: boolean;
   tone: DisplayTone;
+  touchesActive: boolean;
 }
 
-export function GlobalIntelligenceMap({ live }: { live?: MarketMapLiveInputs }) {
+export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
   const nodes = buildMarketMapNodes(live);
-  const [selectedId, setSelectedId] = useState<MarketMapNodeId>("btc");
+  const [activeId, setActiveId] = useState<MarketMapNodeId | null>(null);
+  const [selectedId, setSelectedId] = useState<MarketMapNodeId | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Partial<Record<MarketMapNodeId, HTMLButtonElement | null>>>({});
   const [paths, setPaths] = useState<PathModel[]>([]);
 
-  // Read via a ref so the ResizeObserver effect below can stay mount-only
-  // while `recompute` always sees the latest nodes/selection.
-  const stateRef = useRef({ nodes, selectedId });
-  stateRef.current = { nodes, selectedId };
+  const stateRef = useRef({ nodes, activeId });
+  stateRef.current = { nodes, activeId };
 
-  const selectedNode = nodes.find((n) => n.id === selectedId) ?? nodes[0];
+  const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
 
   const recompute = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
-    const { nodes: currentNodes, selectedId: currentSelected } = stateRef.current;
+    const { nodes: currentNodes, activeId: currentActive } = stateRef.current;
     const containerRect = container.getBoundingClientRect();
     const anchors: Partial<Record<MarketMapNodeId, { x: number; top: number; bottom: number }>> = {};
 
@@ -91,21 +82,16 @@ export function GlobalIntelligenceMap({ live }: { live?: MarketMapLiveInputs }) 
       const a = anchors[edge.from];
       const b = anchors[edge.to];
       if (!a || !b) return null;
-      const startX = a.x;
-      const startY = a.bottom;
-      const endX = b.x;
-      const endY = b.top;
-      const midY = startY + (endY - startY) / 2;
-      const d = `M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`;
-      const active = edge.from === currentSelected || edge.to === currentSelected;
+      const midY = a.bottom + (b.top - a.bottom) / 2;
+      const d = `M ${a.x} ${a.bottom} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.top}`;
       const toneSource = currentNodes.find((n) => n.id === edge.to);
-      return { key: `${edge.from}-${edge.to}`, d, active, tone: toneSource?.tone ?? "neutral" };
+      const touchesActive = currentActive !== null && (edge.from === currentActive || edge.to === currentActive);
+      return { key: `${edge.from}-${edge.to}`, d, tone: toneSource?.tone ?? "neutral", touchesActive };
     }).filter((p): p is PathModel => Boolean(p));
 
     setPaths(nextPaths);
   }, []);
 
-  // Mount-only: set up measurement + resize/font-settle recompute.
   useLayoutEffect(() => {
     recompute();
     const ro = new ResizeObserver(() => recompute());
@@ -121,10 +107,9 @@ export function GlobalIntelligenceMap({ live }: { live?: MarketMapLiveInputs }) 
     };
   }, [recompute]);
 
-  // Re-measure whenever the selection changes (card content/height can shift).
   useLayoutEffect(() => {
     recompute();
-  }, [selectedId, nodes.length, recompute]);
+  }, [activeId, nodes.length, recompute]);
 
   function setNodeRef(id: MarketMapNodeId) {
     return (el: HTMLButtonElement | null) => {
@@ -132,46 +117,76 @@ export function GlobalIntelligenceMap({ live }: { live?: MarketMapLiveInputs }) 
     };
   }
 
+  function openNode(id: MarketMapNodeId) {
+    setSelectedId(id);
+    setDrawerOpen(true);
+  }
+
   function renderNode(id: MarketMapNodeId, opts?: { wide?: boolean }) {
     const node = nodes.find((n) => n.id === id);
     if (!node) return null;
-    const selected = node.id === selectedId;
+    const isActive = activeId === id;
     return (
       <button
         key={node.id}
         ref={setNodeRef(node.id)}
         type="button"
-        aria-pressed={selected}
-        onClick={() => setSelectedId(node.id)}
+        onClick={() => openNode(node.id)}
+        onMouseEnter={() => setActiveId(node.id)}
+        onMouseLeave={() => setActiveId((cur) => (cur === node.id ? null : cur))}
+        onFocus={() => setActiveId(node.id)}
         className={clsx(
           "group relative z-10 rounded-xl border bg-bg-surface p-3 text-left shadow-card transition-all duration-200",
           "hover:-translate-y-0.5 hover:border-signal/40",
-          selected ? TONE_BORDER_SELECTED[node.tone] : TONE_BORDER[node.tone],
+          isActive ? TONE_BORDER_ACTIVE[node.tone] : TONE_BORDER[node.tone],
+          !node.connected && "border-dashed",
           opts?.wide ? "w-full sm:mx-auto sm:max-w-xs" : "w-full"
         )}
       >
         <div className="flex items-center gap-1.5">
           <LiveDot tone={TONE_DOT[node.tone]} />
           <span className="eyebrow text-[10px] tracking-wide text-ink-faint">{node.code}</span>
-          {node.sample && (
-            <span className="ml-auto shrink-0 rounded border border-line px-1 text-[9px] uppercase tracking-wide text-ink-faint">
-              contoh
+          {!node.connected && (
+            <span className="ml-auto shrink-0 rounded border border-line px-1 text-[8px] uppercase tracking-wide text-ink-faint">
+              waiting
             </span>
           )}
         </div>
         <p className="mt-1 truncate text-sm font-semibold text-ink">{node.title}</p>
-        {node.metrics[0] && (
-          <p className={clsx("mt-0.5 truncate text-[11px]", TONE_TEXT[node.metrics[0].tone ?? "neutral"])}>
-            {node.metrics[0].label}: {node.metrics[0].value}
-          </p>
-        )}
+        <p className={clsx("mt-0.5 truncate text-[11px]", node.cardMetric.connected ? TONE_TEXT[node.cardMetric.tone] : "text-ink-faint")}>
+          {node.cardMetric.label}: {node.cardMetric.value}
+        </p>
       </button>
     );
   }
 
+  const topReasons = live.sentiment.reasons.slice(0, 3);
+
   return (
     <div className="glow-card p-4">
-      <SectionHeader code="MAP" title="Global Market Intelligence Map" hint="Klik salah satu node" />
+      <SectionHeader code="MAP" title="Global Market Intelligence Map" hint="Klik node untuk detail" />
+
+      {/* Global Sentiment summary — reads every node, always visible without a click */}
+      <div className="mb-4 rounded-xl border border-line bg-bg-raised p-3.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <MarketStatusBadge status={live.sentiment.status} />
+          <span className="text-xs text-ink-faint">Confidence</span>
+          <span className="mono-num text-sm font-semibold text-ink">{live.sentiment.confidence}%</span>
+          <span className="text-xs text-ink-faint">· {live.sentiment.signalsAvailable} sinyal terbaca</span>
+        </div>
+        {topReasons.length > 0 ? (
+          <ul className="mt-2 space-y-1">
+            {topReasons.map((r) => (
+              <li key={r.text} className={clsx("flex items-start gap-1.5 text-[12px]", r.direction === 1 ? "text-up" : "text-down")}>
+                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-current" />
+                {r.text}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[12px] text-ink-faint">{live.sentiment.note ?? "Belum ada sinyal terbaca."}</p>
+        )}
+      </div>
 
       <div ref={containerRef} className="relative space-y-3 py-2">
         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full">
@@ -180,12 +195,12 @@ export function GlobalIntelligenceMap({ live }: { live?: MarketMapLiveInputs }) 
               key={p.key}
               d={p.d}
               fill="none"
-              stroke={p.active ? TONE_STROKE[p.tone] : "#23262F"}
-              strokeWidth={p.active ? 2 : 1.5}
-              strokeOpacity={p.active ? 0.9 : 0.6}
-              strokeDasharray={p.active ? "6 6" : undefined}
+              stroke={p.touchesActive ? TONE_STROKE[p.tone] : "#23262F"}
+              strokeWidth={p.touchesActive ? 2 : 1.5}
+              strokeOpacity={p.touchesActive ? 0.95 : 0.55}
+              strokeDasharray="5 7"
               strokeLinecap="round"
-              className={p.active ? "animate-dashFlow" : undefined}
+              className={p.touchesActive ? "animate-dashFlow" : "animate-dashFlowSlow"}
             />
           ))}
         </svg>
@@ -205,48 +220,12 @@ export function GlobalIntelligenceMap({ live }: { live?: MarketMapLiveInputs }) 
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={selectedNode.id}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.2 }}
-          className="mt-4 rounded-xl border border-line bg-bg-raised p-4"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <LiveDot tone={TONE_DOT[selectedNode.tone]} />
-            <span className="eyebrow text-[11px] text-ink-faint">{selectedNode.code}</span>
-            <h3 className="text-sm font-semibold text-ink">{selectedNode.title}</h3>
-            {selectedNode.sample && (
-              <span className="rounded border border-line px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-ink-faint">
-                Data contoh
-              </span>
-            )}
-          </div>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">{selectedNode.summary}</p>
-
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {selectedNode.metrics.map((m) => (
-              <div key={m.label} className="rounded-lg border border-line bg-bg-surface px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide text-ink-faint">{m.label}</p>
-                <p className={clsx("mono-num mt-0.5 text-sm font-medium", TONE_TEXT[m.tone ?? "neutral"])}>{m.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 rounded-lg border border-signal/20 bg-signal/5 px-3 py-2.5">
-            <p className="eyebrow mb-1 text-[10px] text-signal-glow">Kenapa ini penting</p>
-            <p className="text-[13px] leading-relaxed text-ink-muted">{selectedNode.narrative[narrativeKey(selectedNode.tone)]}</p>
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      <p className="mt-3 flex items-start gap-1.5 text-[11px] text-ink-faint">
-        <Info size={12} className="mt-0.5 shrink-0" />
-        Peta ini menjelaskan hubungan antar market, bukan sinyal beli/jual. Node bertanda &quot;contoh&quot; masih memakai data
-        ilustrasi sampai feed live terhubung.
+      <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
+        Peta ini menjelaskan hubungan antar market, bukan sinyal beli/jual. Node bertanda &quot;waiting&quot; menunggu API
+        terhubung — lihat CHANGES.md untuk daftar key yang dibutuhkan.
       </p>
+
+      <NodeDrawer node={selectedNode} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );
 }

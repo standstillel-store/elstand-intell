@@ -24,7 +24,7 @@ function MiniStat({ card }: { card: WhaleTrackerCard }) {
     <div className="rounded-lg border border-line bg-bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] uppercase tracking-wide text-ink-faint">{card.label}</p>
-        {card.sample && <span className="shrink-0 rounded border border-line px-1 text-[9px] uppercase text-ink-faint">contoh</span>}
+        {card.sample && <span className="shrink-0 rounded border border-line px-1 text-[9px] uppercase text-ink-faint">waiting</span>}
       </div>
       <p className={clsx("mono-num mt-1 text-base font-semibold", TONE_TEXT[card.tone])}>{card.value}</p>
       <p className="mt-0.5 text-[11px] text-ink-faint">{card.hint}</p>

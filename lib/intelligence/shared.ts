@@ -30,71 +30,11 @@ export function deriveTrend(change24h?: number, change7d?: number): TrendReading
   return { label: "Netral", tone: "neutral" };
 }
 
-export type MarketStatus = "risk-on" | "neutral" | "risk-off";
-
-export interface MarketStatusReading {
-  status: MarketStatus;
-  label: string;
-  reason: string;
-  signalsCounted: number;
-}
-
-/**
- * Market Status (Risk On / Neutral / Risk Off) — a small, transparent vote
- * across up to three independent signals: Fear & Greed, 24h total market cap
- * change, and DXY (USD strength) direction. Each signal casts at most one
- * vote; the label is only ever as confident as the number of signals that
- * agree. This mirrors the same causal chain shown on the Global Intelligence
- * Map (USD strength -> liquidity -> crypto pressure), so the badge and the
- * map never contradict each other.
- */
-export function deriveMarketStatus(input: {
-  fngValue?: number;
-  mcChange24h?: number;
-  dxyChangePct?: number;
-}): MarketStatusReading {
-  const { fngValue, mcChange24h, dxyChangePct } = input;
-  let score = 0;
-  let counted = 0;
-  const signals: string[] = [];
-
-  if (fngValue !== undefined) {
-    counted++;
-    if (fngValue >= 55) {
-      score += 1;
-      signals.push("Fear & Greed condong Greed");
-    } else if (fngValue <= 45) {
-      score -= 1;
-      signals.push("Fear & Greed condong Fear");
-    }
-  }
-  if (mcChange24h !== undefined) {
-    counted++;
-    if (mcChange24h > 1) {
-      score += 1;
-      signals.push("Market cap 24h naik");
-    } else if (mcChange24h < -1) {
-      score -= 1;
-      signals.push("Market cap 24h turun");
-    }
-  }
-  if (dxyChangePct !== undefined) {
-    counted++;
-    if (dxyChangePct < -0.15) {
-      score += 1;
-      signals.push("USD melemah (DXY turun)");
-    } else if (dxyChangePct > 0.15) {
-      score -= 1;
-      signals.push("USD menguat (DXY naik)");
-    }
-  }
-
-  const status: MarketStatus = score >= 2 ? "risk-on" : score <= -2 ? "risk-off" : "neutral";
-  const label = status === "risk-on" ? "Risk On" : status === "risk-off" ? "Risk Off" : "Neutral";
-  const reason = signals.length ? signals.join(" · ") : "Sinyal campuran, belum ada arah dominan";
-
-  return { status, label, reason, signalsCounted: counted };
-}
+// Note: the 3-state Risk On/Neutral/Risk Off reader that used to live here
+// has been superseded by deriveGlobalSentiment() in ./globalSentiment.ts,
+// which adds a 4th "transition" state, per-signal reasons, and a confidence
+// score, and is now the single source of truth shared by both the Top
+// Market Overview card and the Global Intelligence Map header.
 
 // ---------------------------------------------------------------------------
 // Sector taxonomy — seed list only. CoinGecko/CMC category coverage is much
@@ -171,4 +111,21 @@ const SECTOR_SEED_TAGS: Record<string, Sector> = {
 
 export function getSectorForSymbol(symbol: string): Sector | undefined {
   return SECTOR_SEED_TAGS[symbol.toUpperCase()];
+}
+
+/**
+ * Small, transparent 0-100 composite: momentum (weighted 24h/7d change) with
+ * a penalty for extreme funding (crowded positioning = squeeze risk). Not a
+ * prediction — a rule-based read of current conditions, same spirit as the
+ * rest of this file.
+ */
+export function computeAssetAiScore(input: { change24h?: number; change7d?: number; fundingRate?: number }): number {
+  let score = 50;
+  score += clamp((input.change24h ?? 0) * 2, -20, 20);
+  score += clamp((input.change7d ?? 0) * 0.5, -10, 10);
+  if (input.fundingRate !== undefined) {
+    const extremity = Math.min(Math.abs(input.fundingRate) * 10000, 20);
+    score -= extremity * 0.3;
+  }
+  return clamp(Math.round(score), 0, 100);
 }

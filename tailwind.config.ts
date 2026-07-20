@@ -83,6 +83,7 @@ const config: Config = {
         fadeUp: "fadeUp 0.35s ease-out both",
         blink: "blink 1.4s ease-in-out infinite",
         dashFlow: "dashFlow 0.7s linear infinite",
+        dashFlowSlow: "dashFlow 3s linear infinite",
       },
     },
   },
