@@ -72,6 +72,17 @@ body {
   transform: translateY(-1px);
 }
 
+/* Faint dot-grid backdrop for zoom/pan canvases (Global Intelligence Map,
+   and any future map-like panel) — signals "this area is a pannable
+   canvas" the way Figma/Arkham-style graph explorers do, before the user
+   even touches it. Sits behind the transformed content, so it stays put
+   while the map itself pans/zooms over it. */
+.map-canvas-grid {
+  @apply bg-bg;
+  background-image: radial-gradient(rgba(139, 123, 255, 0.16) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
 .skeleton {
   position: relative;
   overflow: hidden;

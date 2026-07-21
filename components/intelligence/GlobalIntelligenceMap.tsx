@@ -1,10 +1,12 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import { Maximize2, Minus, Plus } from "lucide-react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { LiveDot } from "@/components/ui/LiveDot";
 import { MarketStatusBadge } from "./MarketStatusBadge";
 import { NodeDrawer } from "./ui/NodeDrawer";
+import { useZoomPan } from "./ui/useZoomPan";
 import { buildMarketMapNodes, MARKET_MAP_EDGES, type MarketMapLiveInputs, type MarketMapNodeId } from "@/lib/intelligence/marketMap";
 import type { DisplayTone } from "@/lib/intelligence/shared";
 
@@ -39,6 +41,8 @@ const TONE_STROKE: Record<DisplayTone, string> = {
   neutral: "#6E5BFF",
 };
 
+const MAP_FALLBACK_HEIGHT = 420;
+
 interface PathModel {
   key: string;
   d: string;
@@ -63,10 +67,13 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
   const [activeId, setActiveId] = useState<MarketMapNodeId | null>(null);
   const [selectedId, setSelectedId] = useState<MarketMapNodeId | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Partial<Record<MarketMapNodeId, HTMLButtonElement | null>>>({});
   const [paths, setPaths] = useState<PathModel[]>([]);
+  const [mapHeight, setMapHeight] = useState<number | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const zoomPan = useZoomPan(viewportRef, containerRef, { reducedMotion });
 
   const stateRef = useRef({ nodes, activeId });
   stateRef.current = { nodes, activeId };
@@ -77,17 +84,20 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
     const container = containerRef.current;
     if (!container) return;
     const { nodes: currentNodes, activeId: currentActive } = stateRef.current;
-    const containerRect = container.getBoundingClientRect();
     const anchors: Partial<Record<MarketMapNodeId, { x: number; top: number; bottom: number }>> = {};
 
     (Object.keys(nodeRefs.current) as MarketMapNodeId[]).forEach((id) => {
       const el = nodeRefs.current[id];
       if (!el) return;
-      const r = el.getBoundingClientRect();
+      // offsetLeft/offsetTop (not getBoundingClientRect) — these are
+      // unaffected by the pan/zoom CSS transform applied to `container`,
+      // so edges stay in the same local coordinate space as the nodes and
+      // the whole assembly scales/pans together as one unit instead of
+      // needing to be recalculated on every frame of a drag or pinch.
       anchors[id] = {
-        x: r.left - containerRect.left + r.width / 2,
-        top: r.top - containerRect.top,
-        bottom: r.top - containerRect.top + r.height,
+        x: el.offsetLeft + el.offsetWidth / 2,
+        top: el.offsetTop,
+        bottom: el.offsetTop + el.offsetHeight,
       };
     });
 
@@ -103,6 +113,7 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
     }).filter((p): p is PathModel => Boolean(p));
 
     setPaths(nextPaths);
+    setMapHeight(container.offsetHeight);
   }, []);
 
   useLayoutEffect(() => {
@@ -131,6 +142,7 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
   }
 
   function openNode(id: MarketMapNodeId) {
+    if (zoomPan.shouldSuppressClick()) return; // a real drag/pinch just ended — don't also open the drawer
     setSelectedId(id);
     setDrawerOpen(true);
   }
@@ -177,7 +189,7 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
 
   return (
     <div className="glow-card p-4">
-      <SectionHeader code="MAP" title="Global Market Intelligence Map" hint="Klik node untuk detail" />
+      <SectionHeader code="MAP" title="Global Market Intelligence Map" hint="Klik node · geser/cubit = zoom" />
 
       {/* Global Sentiment summary — reads every node, always visible without a click */}
       <div className="mb-4 rounded-xl border border-line bg-bg-raised p-3.5">
@@ -201,56 +213,101 @@ export function GlobalIntelligenceMap({ live }: { live: MarketMapLiveInputs }) {
         )}
       </div>
 
-      <div ref={containerRef} className="relative space-y-3 py-2">
-        <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
-          {paths.map((p) => {
-            const pathId = `edge-${p.key}`;
-            const lineColor = p.touchesActive ? TONE_STROKE[p.tone] : "#3A3F4B";
-            const particleColor = TONE_STROKE[p.tone];
-            const duration = p.touchesActive ? 1.6 : 3.4;
-            return (
-              <g key={p.key}>
-                {/* soft glow underlay */}
-                <path
-                  d={p.d}
-                  id={pathId}
-                  fill="none"
-                  stroke={lineColor}
-                  strokeWidth={p.touchesActive ? 6 : 3.5}
-                  strokeOpacity={p.touchesActive ? 0.16 : 0.07}
-                  strokeLinecap="round"
-                />
-                {/* core line */}
-                <path d={p.d} fill="none" stroke={lineColor} strokeWidth={p.touchesActive ? 1.75 : 1.25} strokeOpacity={p.touchesActive ? 0.9 : 0.45} strokeLinecap="round" />
+      {/* Zoomable / pannable canvas — Ctrl/Cmd+scroll or pinch to zoom, drag to pan,
+         like an Arkham-style graph explorer. See useZoomPan for the interaction model. */}
+      <div
+        ref={viewportRef}
+        {...zoomPan.viewportHandlers}
+        style={{ height: mapHeight ?? MAP_FALLBACK_HEIGHT, ...zoomPan.viewportStyle }}
+        className="map-canvas-grid relative overflow-hidden rounded-xl border border-line"
+      >
+        <div ref={containerRef} style={zoomPan.contentStyle} className="relative space-y-3 px-2.5 py-3.5">
+          <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+            {paths.map((p) => {
+              const pathId = `edge-${p.key}`;
+              const lineColor = p.touchesActive ? TONE_STROKE[p.tone] : "#3A3F4B";
+              const particleColor = TONE_STROKE[p.tone];
+              const duration = p.touchesActive ? 1.6 : 3.4;
+              return (
+                <g key={p.key}>
+                  {/* soft glow underlay */}
+                  <path
+                    d={p.d}
+                    id={pathId}
+                    fill="none"
+                    stroke={lineColor}
+                    strokeWidth={p.touchesActive ? 6 : 3.5}
+                    strokeOpacity={p.touchesActive ? 0.16 : 0.07}
+                    strokeLinecap="round"
+                  />
+                  {/* core line */}
+                  <path d={p.d} fill="none" stroke={lineColor} strokeWidth={p.touchesActive ? 1.75 : 1.25} strokeOpacity={p.touchesActive ? 0.9 : 0.45} strokeLinecap="round" />
 
-                {/* flowing particles — a small stream of dots travels the path on a loop, like liquidity moving downstream */}
-                {!reducedMotion &&
-                  [0, 1, 2].map((i) => (
-                    <g key={i}>
-                      <circle r={p.touchesActive ? 4.5 : 3} fill={particleColor} opacity={p.touchesActive ? 0.25 : 0.14} />
-                      <circle r={p.touchesActive ? 2.2 : 1.5} fill={particleColor} opacity={p.touchesActive ? 1 : 0.65} />
-                      <animateMotion dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / 3}s`}>
-                        <mpath href={`#${pathId}`} />
-                      </animateMotion>
-                    </g>
-                  ))}
-              </g>
-            );
-          })}
-        </svg>
+                  {/* flowing particles — a small stream of dots travels the path on a loop, like liquidity moving downstream */}
+                  {!reducedMotion &&
+                    [0, 1, 2].map((i) => (
+                      <g key={i}>
+                        <circle r={p.touchesActive ? 4.5 : 3} fill={particleColor} opacity={p.touchesActive ? 0.25 : 0.14} />
+                        <circle r={p.touchesActive ? 2.2 : 1.5} fill={particleColor} opacity={p.touchesActive ? 1 : 0.65} />
+                        <animateMotion dur={`${duration}s`} repeatCount="indefinite" begin={`${(i * duration) / 3}s`}>
+                          <mpath href={`#${pathId}`} />
+                        </animateMotion>
+                      </g>
+                    ))}
+                </g>
+              );
+            })}
+          </svg>
 
-        <div className="flex justify-center">{renderNode("macro", { wide: true })}</div>
-        <div className="flex justify-center">{renderNode("sentiment", { wide: true })}</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {renderNode("usd")}
-          {renderNode("gold")}
-          {renderNode("stocks")}
+          <div className="flex justify-center">{renderNode("macro", { wide: true })}</div>
+          <div className="flex justify-center">{renderNode("sentiment", { wide: true })}</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {renderNode("usd")}
+            {renderNode("gold")}
+            {renderNode("stocks")}
+          </div>
+          <div className="flex justify-center">{renderNode("crypto", { wide: true })}</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {renderNode("btc")}
+            {renderNode("eth")}
+            {renderNode("altcoin")}
+          </div>
         </div>
-        <div className="flex justify-center">{renderNode("crypto", { wide: true })}</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {renderNode("btc")}
-          {renderNode("eth")}
-          {renderNode("altcoin")}
+
+        {/* Floating zoom controls — always visible so touch users who miss the pinch
+           gesture and desktop users who miss Ctrl+scroll still have an obvious way in. */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="pointer-events-auto absolute bottom-2.5 right-2.5 flex items-center gap-0.5 rounded-lg border border-line bg-bg-raised/90 p-1 shadow-card backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={zoomPan.zoomOut}
+              disabled={!zoomPan.canZoomOut}
+              aria-label="Perkecil peta"
+              className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+            >
+              <Minus size={13} />
+            </button>
+            <span className="mono-num w-9 select-none text-center text-[10px] text-ink-faint">{Math.round(zoomPan.scale * 100)}%</span>
+            <button
+              type="button"
+              onClick={zoomPan.zoomIn}
+              disabled={!zoomPan.canZoomIn}
+              aria-label="Perbesar peta"
+              className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+            >
+              <Plus size={13} />
+            </button>
+            <span className="mx-0.5 h-4 w-px bg-line" />
+            <button
+              type="button"
+              onClick={zoomPan.reset}
+              disabled={zoomPan.isAtDefault}
+              aria-label="Atur ulang zoom peta"
+              className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+            >
+              <Maximize2 size={13} />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,36 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.2 — Zoom & pan di Global Intelligence Map
+
+- Peta sekarang jadi canvas yang bisa di-zoom & digeser, gaya graph
+  explorer Arkham Intelligence, lewat hook baru yang reusable:
+  `components/intelligence/ui/useZoomPan.ts` — tanpa dependency
+  tambahan, murni Pointer Events + satu native wheel listener.
+- Interaksi: **mouse** klik-drag buat geser, **Ctrl/Cmd+scroll** buat
+  zoom (scroll biasa dibiarkan apa adanya supaya halaman tetap bisa
+  di-scroll normal walau kursor ada di atas peta). **Touch** satu jari
+  TIDAK ditangkap sama sekali supaya swipe-scroll halaman tetap jalan
+  seperti biasa — cubit/geser dua jari baru men-zoom & menggeser peta,
+  persis seperti embed Google Maps. Tombol +/− dan reset selalu
+  terlihat di pojok kanan bawah buat yang tidak coba gesture-nya, plus
+  double click/tap buat lompat zoom.
+- Klik node tetap berfungsi seperti biasa — ada guard kecil yang
+  menekan event klik selama ±300ms setelah drag/pinch beneran
+  terjadi, supaya menggeser peta tidak sengaja kebuka drawer.
+- Perbaikan sekalian: garis penghubung SVG dulu dihitung dari
+  `getBoundingClientRect()` (posisi di layar). Begitu container dikasih
+  `transform` buat zoom/pan, itu bakal dobel-terskalakan. Sekarang
+  dihitung dari `offsetLeft/offsetTop` (posisi lokal, tidak
+  kepengaruh transform), jadi garis tetap nempel presisi ke node di
+  skala/posisi berapa pun, dan tidak perlu dihitung ulang di tiap
+  frame drag.
+- Latar dot-grid tipis (`.map-canvas-grid` di `globals.css`) ditambahkan
+  di belakang peta supaya "ini area yang bisa digeser" kelihatan dari
+  awal, bukan cuma ketauan pas coba drag.
+- `minScale`/`maxScale`/`edgePadding` di `useZoomPan` bisa dipakai lagi
+  buat panel lain yang bakal jadi canvas juga (Sector Rotation, Altcoin
+  Scanner map, dst.) dari brief redesign V3.
+
 ## V2.1 — Animasi flow di garis penghubung
 
 - Garis di `GlobalIntelligenceMap` sekarang solid + glow (bukan dash
