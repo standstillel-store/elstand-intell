@@ -14,6 +14,9 @@ import { GlobalIntelligenceMap } from "@/components/intelligence/GlobalIntellige
 import { CryptoHeatmap } from "@/components/heatmap/CryptoHeatmap";
 import { WhaleLiquidityPanel } from "@/components/intelligence/WhaleLiquidityPanel";
 import { InstitutionalFlowPanel } from "@/components/intelligence/InstitutionalFlowPanel";
+import { MarketPulsePanel } from "@/components/intelligence/MarketPulsePanel";
+import { AIFinalConclusion } from "@/components/intelligence/AIFinalConclusion";
+import { getInstitutionalFlowData } from "@/lib/intelligence/institutionalFlow";
 import { SectorRotationHeatmap } from "@/components/intelligence/SectorRotationHeatmap";
 import { AltcoinScannerTable } from "@/components/intelligence/AltcoinScannerTable";
 import { computeSectorRotation, getSampleSectorRotation } from "@/lib/intelligence/sectorRotation";
@@ -79,6 +82,10 @@ export default async function Home() {
   const topLoser = rankedAlts.length
     ? [...rankedAlts].sort((a, b) => (a.price_change_percentage_24h_in_currency ?? 0) - (b.price_change_percentage_24h_in_currency ?? 0))[0]
     : undefined;
+  const watchlist = [...rankedAlts]
+    .sort((a, b) => (b.price_change_percentage_24h_in_currency ?? 0) - (a.price_change_percentage_24h_in_currency ?? 0))
+    .slice(0, 3)
+    .map((m) => ({ symbol: m.symbol.toUpperCase(), change24h: m.price_change_percentage_24h_in_currency ?? 0 }));
 
   // Derived for real from data already on hand — not in CoinGecko's /global
   // response by default, but both are simple, honest sums/ratios over `markets`.
@@ -113,6 +120,7 @@ export default async function Home() {
   const ethFunding = funding.find((f) => f.symbol.toUpperCase() === "ETHUSDT");
   const btcWhaleNote = deriveAssetWhaleNote(whales, ["BTC"]);
   const ethWhaleNote = deriveAssetWhaleNote(whales, ["ETH", "WETH"]);
+  const institutionalFlow = getInstitutionalFlowData();
 
   return (
     <main className="min-h-screen lg:pt-14">
@@ -219,9 +227,31 @@ export default async function Home() {
 
           <SectorRotationHeatmap rows={sectorRotation} />
 
+          <AltcoinScannerTable rows={scannerRows} />
+
+          <MarketPulsePanel
+            inputs={{
+              sentiment,
+              macro: snap.macro,
+              whaleSummary: snap.whaleSummary,
+              fngValue: fng?.now.value,
+              fngClassification: fng?.now.classification,
+              stablecoinChange24hUsd: snap.stablecoin?.change24hUsd,
+              btcFundingRate: btcFunding?.lastFundingRate,
+              altseason: snap.altseason,
+              etfNetTotalUsd: institutionalFlow.connected ? institutionalFlow.etfNetTotalUsd : undefined,
+            }}
+          />
+
           <AISummaryCard summary={snap.aiSummary} />
 
-          <AltcoinScannerTable rows={scannerRows} />
+          <AIFinalConclusion
+            sentiment={sentiment}
+            btcChange24h={btcMarket?.price_change_percentage_24h_in_currency}
+            ethChange24h={ethMarket?.price_change_percentage_24h_in_currency}
+            altChange24h={altChange24h}
+            watchlist={watchlist}
+          />
 
           <div>
             <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-faint">Lainnya dari ElStand AI</p>

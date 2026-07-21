@@ -1,5 +1,47 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.5 — AI Final Conclusion gaya terminal + urutan section dirapikan
+
+- Section baru `components/intelligence/AIFinalConclusion.tsx` +
+  `lib/intelligence/finalConclusion.ts`, persis format di brief V3
+  (MARKET MODE / CONFIDENCE / BTC / ETH / ALT / WATCHLIST / FINAL
+  ACTION) tapi semua nilainya baca ulang data yang sudah ada:
+  - MARKET MODE & CONFIDENCE = `sentiment.status`/`.confidence` yang
+    sama dipakai di Intelligence Map.
+  - BTC/ETH/ALT = klasifikasi Bullish/Bearish/Neutral dari 24h change
+    (ambang ±2%, sama kayak ambang "top decliners" yang udah dipakai
+    di tempat lain) — ALT dari rata-rata top-30 altcoin yang sudah
+    dihitung buat node Crypto Market di Map.
+  - WATCHLIST = top-3 24h gainer beneran dari data yang sama dipakai
+    `topGainer`/`topLoser`, bukan ticker contoh dari brief.
+  - FINAL ACTION sengaja BUKAN sinyal beli/jual — WAIT/MONITOR/CONFIRMED
+    cuma nunjukkin seberapa sejalan sinyal-sinyal di atas, konsisten
+    sama disclaimer dashboard sendiri ("bukan sinyal beli/jual").
+- Urutan section dirapikan biar sesuai nomor Section di brief: Altcoin
+  Scanner (4) dipindah ke sebelum Market Pulse (6), dan AI Summary + AI
+  Final Conclusion (7) sekarang jadi dua section PALING BAWAH — sesuai
+  "AI Summary MUST become the final output after every analysis".
+
+## V2.4 — Market Pulse (section baru)
+
+- Section baru sesuai brief V3 (Section 6, sebelum AI Summary):
+  `lib/intelligence/marketPulse.ts` + `components/intelligence/ui/PulseGauge.tsx`
+  (gauge setengah lingkaran, reusable) + `components/intelligence/MarketPulsePanel.tsx`.
+- 9 gauge: Risk Mode, Macro, Whale Activity, Institution, Sentiment,
+  Liquidity, Volatility, Market Bias, Confidence — **semuanya baca ulang
+  angka yang sudah dihitung panel lain** (sentiment, kalender makro,
+  whale summary, Fear&Greed, stablecoin supply, funding rate BTC,
+  altseason index, ETF flow), bukan angka baru yang dikarang.
+- Ketauan pas nyambungin: `getInstitutionalFlowData()` sekarang selalu
+  balikin `connected: false` (belum ada sumber data ETF flow yang live —
+  kemungkinan integrasinya belum/sudah dicabut). Gauge "Institution"
+  jujur nampilin "Waiting" bukan "Flat", karena "Flat" bakal keliatan
+  kayak ada data yang bilang net flow-nya nol padahal sebenernya belum
+  konek sama sekali. Sama buat gauge lain kalau sumbernya undefined
+  (mis. stablecoin gagal fetch).
+- Dipasang di dashboard tepat sebelum AI Summary, konsisten sama urutan
+  section di brief.
+
 ## V2.3 — Crypto Heatmap disandingkan dengan Intelligence Map
 
 - `components/heatmap/CryptoHeatmap.tsx` sudah ada dari sesi sebelumnya
