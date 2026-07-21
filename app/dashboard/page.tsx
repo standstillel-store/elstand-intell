@@ -11,6 +11,7 @@ import { AIChatDock } from "@/components/AIChatDock";
 import { AISummaryCard } from "@/components/right-rail/AISummaryCard";
 import { TopMarketOverview } from "@/components/intelligence/TopMarketOverview";
 import { GlobalIntelligenceMap } from "@/components/intelligence/GlobalIntelligenceMap";
+import { CryptoHeatmap } from "@/components/heatmap/CryptoHeatmap";
 import { WhaleLiquidityPanel } from "@/components/intelligence/WhaleLiquidityPanel";
 import { InstitutionalFlowPanel } from "@/components/intelligence/InstitutionalFlowPanel";
 import { SectorRotationHeatmap } from "@/components/intelligence/SectorRotationHeatmap";
@@ -54,7 +55,7 @@ export default async function Home() {
     getCryptoPanicNews(),
   ]);
   const { base } = snap;
-  const { markets, global, funding, whales, fng, news, calendar } = base;
+  const { markets, global, funding, whales, fng, news, calendar, rugpullRisks } = base;
 
   const btcMarket = markets.find((m) => m.symbol.toLowerCase() === "btc");
   const ethMarket = markets.find((m) => m.symbol.toLowerCase() === "eth");
@@ -162,6 +163,7 @@ export default async function Home() {
             sentiment={sentiment}
           />
 
+          <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
           <GlobalIntelligenceMap
             live={{
               sentiment,
@@ -208,6 +210,8 @@ export default async function Home() {
               sectorRotation,
             }}
           />
+          <CryptoHeatmap markets={markets} rugpullRisks={rugpullRisks} smartMoneyAccumulation={snap.smartMoneyAccumulation} />
+          </div>
 
           <WhaleLiquidityPanel transfers={whales} whaleSummary={snap.whaleSummary} funding={funding} liquiditySymbol="BTCUSDT" />
 

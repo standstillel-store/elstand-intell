@@ -1,5 +1,26 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.3 — Crypto Heatmap disandingkan dengan Intelligence Map
+
+- `components/heatmap/CryptoHeatmap.tsx` sudah ada dari sesi sebelumnya
+  (treemap per-koin, ukuran cell mengikuti market cap rank, warna+intensity
+  dari % perubahan, kategori bullish/bearish/rugpull-risk/smart-money,
+  toggle Top 40/Top 80, klik cell buka Token Analyzer) tapi belum pernah
+  dipasang ke dashboard — sekarang dipasang persis sesuai brief V3
+  Section 1 (Map di kiri, Heatmap di kanan, desktop 2 kolom / mobile
+  tumpuk). Datanya dari `base.markets`, `base.rugpullRisks`, dan
+  `snap.smartMoneyAccumulation` yang sebenarnya sudah dihitung di
+  `getDashboardSnapshot()` — jadi tidak perlu fetch baru.
+- Heatmap dikasih `max-height` + scroll halus (`scrollbar-none`) supaya
+  tetap rapi bersebelahan dengan Map waktu toggle ke Top 80, plus
+  `LiveDot` di header konsisten dengan panel lain.
+- Grid cell & hover-nya (`.heat-cell` di globals.css) sudah bagus dari
+  sebelumnya, tidak diutak-atik.
+- Section brief V3 yang lain (Whale Intelligence & Institutional Flow
+  restyle, Sector Rotation restyle, Altcoin Scanner restyle, Economic
+  Calendar di dashboard, Market Pulse — section baru, AI Final Conclusion
+  gaya terminal, Settings redesign) belum digarap ronde ini.
+
 ## V2.2 — Zoom & pan di Global Intelligence Map
 
 - Peta sekarang jadi canvas yang bisa di-zoom & digeser, gaya graph
