@@ -78,9 +78,11 @@ export async function getWhaleTransfers(priceBySymbol: Record<string, number>): 
             timestamp: t.metadata?.blockTimestamp ?? new Date().toISOString(),
           });
         }
-      } catch {
+      } catch (err) {
         // One token failing (rate limit, bad address, etc.) shouldn't take
-        // down the whole feed.
+        // down the whole feed — but it should show up in logs so a
+        // persistent failure (bad key, wrong network) is diagnosable.
+        console.error(`[alchemy] ${symbol}: ${err instanceof Error ? err.message : err}`);
         continue;
       }
     }

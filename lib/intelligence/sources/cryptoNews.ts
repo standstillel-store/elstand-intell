@@ -38,9 +38,15 @@ export async function getCryptoPanicNews(limit = 10): Promise<NewsItem[] | undef
     try {
       const url = `${CRYPTOPANIC_BASE}?auth_token=${apiKey}&public=true&filter=hot`;
       const res = await fetch(url, { next: { revalidate: 60 } });
-      if (!res.ok) return undefined;
+      if (!res.ok) {
+        console.error(`[cryptopanic] HTTP ${res.status} ${res.statusText}`);
+        return undefined;
+      }
       const json = (await res.json()) as { results?: CryptoPanicPost[] };
-      if (!json.results?.length) return undefined;
+      if (!json.results?.length) {
+        console.error("[cryptopanic] empty results — check auth_token / plan");
+        return undefined;
+      }
 
       return json.results.slice(0, limit).map(
         (p): NewsItem => ({
@@ -52,7 +58,8 @@ export async function getCryptoPanicNews(limit = 10): Promise<NewsItem[] | undef
           sentiment: sentimentFromVotes(p.votes),
         })
       );
-    } catch {
+    } catch (err) {
+      console.error(`[cryptopanic] ${err instanceof Error ? err.message : err}`);
       return undefined;
     }
   });

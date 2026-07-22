@@ -6,6 +6,7 @@ import { getFearGreed } from "./alternativeme";
 import { getNews } from "./newsapi";
 import { getEconomicCalendar } from "./economiccalendar";
 import { buildPumpCandidates, buildRugpullRisks } from "./scoring";
+import { logged } from "./cache";
 import type {
   CoinMarket,
   DexPool,
@@ -42,19 +43,19 @@ export interface NoctrunSnapshot {
  */
 export async function getSnapshot(): Promise<NoctrunSnapshot> {
   const [markets, global, trending, fresh, funding, fng, news, calendar] = await Promise.all([
-    getTopMarkets(150).catch(() => []),
-    getGlobal().catch(() => undefined),
-    getTrendingPools().catch(() => []),
-    getNewPools().catch(() => []),
-    getFundingSnapshot().catch(() => []),
-    getFearGreed().catch(() => undefined),
-    getNews().catch(() => []),
-    getEconomicCalendar().catch(() => []),
+    logged("markets (CoinGecko)", getTopMarkets(150), []),
+    logged("global (CoinGecko)", getGlobal(), undefined),
+    logged("trendingPools", getTrendingPools(), []),
+    logged("newPools", getNewPools(), []),
+    logged("funding (Binance)", getFundingSnapshot(), []),
+    logged("fearGreed", getFearGreed(), undefined),
+    logged("news", getNews(), []),
+    logged("economicCalendar", getEconomicCalendar(), []),
   ]);
 
   const priceBySymbol: Record<string, number> = {};
   for (const m of markets) priceBySymbol[m.symbol.toLowerCase()] = m.current_price;
-  const whales = await getWhaleTransfers(priceBySymbol).catch(() => []);
+  const whales = await logged("whales (Alchemy)", getWhaleTransfers(priceBySymbol), []);
 
   const pools = [...trending, ...fresh];
   const pumpCandidates = buildPumpCandidates(markets, pools, funding, whales);

@@ -1,5 +1,59 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.6 — Audit "API di env tapi gak kebaca" + sambungin yang masih stub
+
+Ronde ini fokus ke reliability data, bukan UI. Yang saya temuin & benerin:
+
+**Bug utama yang paling mungkin nyebabin "udah taruh API key tapi gak kebaca":**
+`lib/cache.ts` nyimpen HASIL GAGAL (`undefined`) selama TTL yang SAMA kayak
+hasil sukses — buat DXY/M2 (FRED) itu 6-12 JAM. Jadi kalau server sempat
+kepanggil SEKALI sebelum key ditambahin (gagal, ke-cache sebagai gagal),
+nambahin key setelahnya gak langsung kelihatan — nunggu proses restart
+atau TTL abis. Sekarang hasil gagal cuma di-cache maks 10 detik, sukses
+tetap dapet TTL penuh. Ini kemungkinan besar akar masalahnya — **tapi kalau
+masih belum muncul setelah ini, restart/redeploy Repl-nya sekali** biar
+proses lama (yang mungkin masih pegang env var lama) beneran mati.
+
+**Semua source (`lib/intelligence/sources/*.ts`, `lib/alchemy.ts`,
+`lib/newsapi.ts`, `lib/stablecoins.ts`, `lib/snapshot.ts`,
+`lib/dashboardSnapshot.ts`) sekarang nge-log alasan gagal yang sebenarnya**
+(`console.error` dengan prefix `[nama-source]`) — sebelumnya semua gagal
+diem-diem jadi `undefined`. Setelah deploy, cek log Replit-nya: kalau ada
+baris `[twelvedata] ...` / `[finnhub] ...` dst, itu alasan pastinya (key
+salah, plan gak cover simbol, rate limit, dll) — bukan saya nebak lagi.
+
+**Ketauan pas audit:** `NEWSAPI_KEY` free tier NewsAPI.org **cuma jalan di
+localhost** — ditolak dari domain manapun begitu di-deploy (aturan
+NewsAPI sendiri, bukan bug). Ini kemungkinan salah satu API yang "ada
+key-nya tapi gak pernah nyala". Fix: tambahin `GNEWS_API_KEY`
+(https://gnews.io, gratis, gak ada batasan localhost) — kalau diisi,
+otomatis jadi fallback pas NewsAPI gagal.
+
+**Fitur baru/disambungin:**
+- USD (DXY) node: kalau TwelveData gagal (simbol DXY sering gak ke-cover
+  plan gratis), otomatis fallback ke FRED DTWEXBGS yang udah ada di
+  `lib/macro.ts` — sesuai brief "if DXY fails, try another symbol".
+- `lib/intelligence/institutionalFlow.ts`: sebelumnya stub yang SENGAJA
+  selalu balikin kosong (didokumentasikan jelas di komentarnya — bukan
+  bug, emang belum ada API ETF flow gratis). Sekarang scrape tabel publik
+  Farside (https://farside.co.uk/btc/), sesuai prioritas di brief. **Catatan
+  jujur:** saya tulis parser-nya berdasarkan HTML halaman itu yang saya
+  baca lewat web-fetch saya sendiri (bukan dari sandbox coding, yang gak
+  bisa akses situs luar) — jadi BELUM saya jalankan end-to-end. Cek log
+  buat baris `[farside]`: gak ada = parsing sukses, ada = layout-nya
+  beda dari yang saya baca, kasih tau saya buat saya sesuaikan. Kalaupun
+  gagal, jatuhnya balik ke "Waiting" seperti sebelumnya — gak bakal nampilin
+  angka ngasal.
+
+**Sudah beres dari ronde sebelumnya (No. 10 & 11 di brief ini):** Market
+Pulse (rule-based, 9 gauge) dan AI Summary yang menggabungkan semua sinyal
+sudah dibangun di V2.4/V2.5 — gak perlu dikerjain ulang.
+
+**Belum digarap ronde ini:** node-level status/last-update/confidence
+animasi di Intelligence Map (No. 9), retry-with-backoff otomatis &
+AbortController (No. 12 performance), Binance Long/Short Ratio (funding
+rate + open interest udah ada, long/short ratio belum).
+
 ## V2.5 — AI Final Conclusion gaya terminal + urutan section dirapikan
 
 - Section baru `components/intelligence/AIFinalConclusion.tsx` +

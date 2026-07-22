@@ -41,11 +41,18 @@ const TRACKED: { label: string; ticker: string }[] = [
 async function fetchQuote(ticker: string, apiKey: string): Promise<StockQuote | undefined> {
   try {
     const res = await fetch(`${FINNHUB_BASE}?symbol=${ticker}&token=${apiKey}`, { next: { revalidate: 30 } });
-    if (!res.ok) return undefined;
+    if (!res.ok) {
+      console.error(`[finnhub] ${ticker}: HTTP ${res.status} ${res.statusText}`);
+      return undefined;
+    }
     const json = (await res.json()) as { c?: number; dp?: number };
-    if (!json.c) return undefined;
+    if (!json.c) {
+      console.error(`[finnhub] ${ticker}: no price in response (check symbol/plan)`);
+      return undefined;
+    }
     return { label: ticker, ticker, price: json.c, changePct: json.dp };
-  } catch {
+  } catch (err) {
+    console.error(`[finnhub] ${ticker}: ${err instanceof Error ? err.message : err}`);
     return undefined;
   }
 }

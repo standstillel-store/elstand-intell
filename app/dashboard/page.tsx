@@ -120,7 +120,7 @@ export default async function Home() {
   const ethFunding = funding.find((f) => f.symbol.toUpperCase() === "ETHUSDT");
   const btcWhaleNote = deriveAssetWhaleNote(whales, ["BTC"]);
   const ethWhaleNote = deriveAssetWhaleNote(whales, ["ETH", "WETH"]);
-  const institutionalFlow = getInstitutionalFlowData();
+  const institutionalFlow = await getInstitutionalFlowData();
 
   return (
     <main className="min-h-screen lg:pt-14">

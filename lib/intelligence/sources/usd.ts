@@ -1,5 +1,6 @@
 import { cached } from "@/lib/cache";
 import { fetchTwelveDataSeries, type MarketSeriesReading } from "./twelvedata";
+import { getDxyProxy } from "@/lib/macro";
 
 // ---------------------------------------------------------------------------
 // USD strength (DXY) for the Global Intelligence Map's USD node.
@@ -11,12 +12,11 @@ import { fetchTwelveDataSeries, type MarketSeriesReading } from "./twelvedata";
 //
 // Honesty note: index-symbol coverage (DXY) depends on your TwelveData plan
 // — verify at https://twelvedata.com/symbolsearch?s=DXY before relying on
-// this in production. If DXY isn't reachable on your plan, either upgrade
-// or point USD_SYMBOL at a proxy your plan does cover; lib/macro.ts's
-// FRED-based getDxyProxy() (DTWEXBGS, free, no plan restriction, but only
-// ~daily resolution) is the existing fallback used on the Market Overview
-// strip and can be wired in here the same way if you'd rather not depend on
-// TwelveData for this specific node.
+// this in production. If TwelveData's DXY symbol isn't reachable on your
+// plan (or the request fails for any other reason), this automatically
+// falls back to lib/macro.ts's FRED-based getDxyProxy() (DTWEXBGS, free, no
+// plan restriction, ~daily resolution) — same broad-dollar-index signal,
+// lower resolution, but real data instead of "Waiting for API Connection".
 // ---------------------------------------------------------------------------
 
 const USD_SYMBOL = "DXY";
@@ -24,5 +24,11 @@ const USD_SYMBOL = "DXY";
 export type { MarketSeriesReading };
 
 export async function getUsdReading(): Promise<MarketSeriesReading | undefined> {
-  return cached("intel:usd", 30_000, () => fetchTwelveDataSeries(USD_SYMBOL));
+  const primary = await cached("intel:usd", 30_000, () => fetchTwelveDataSeries(USD_SYMBOL));
+  if (primary) return primary;
+
+  const fallback = await getDxyProxy();
+  if (!fallback) return undefined;
+  console.warn("[usd] TwelveData unavailable — serving FRED DTWEXBGS fallback instead");
+  return { value: fallback.value, changePct: fallback.changePct, series: [], asOf: fallback.asOf };
 }

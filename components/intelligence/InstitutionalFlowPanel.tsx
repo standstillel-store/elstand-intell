@@ -34,8 +34,8 @@ function FlowBar({ label, valueUsd, maxAbs }: { label: string; valueUsd: number;
   );
 }
 
-export function InstitutionalFlowPanel({ smartMoney }: { smartMoney?: SmartMoneyEntry[] }) {
-  const { etfFlows, etfNetTotalUsd, movements, connected } = getInstitutionalFlowData();
+export async function InstitutionalFlowPanel({ smartMoney }: { smartMoney?: SmartMoneyEntry[] }) {
+  const { etfFlows, etfNetTotalUsd, movements, connected } = await getInstitutionalFlowData();
   const maxAbs = Math.max(...etfFlows.map((f) => Math.abs(f.netFlowUsd)), 1);
   const hasSmartMoney = Boolean(smartMoney?.length);
 

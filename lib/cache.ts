@@ -14,6 +14,22 @@ export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>
     return hit.value as T;
   }
   const value = await fn();
-  store.set(key, { value, expiresAt: now + ttlMs });
+  // A `undefined`/empty result almost always means "API call failed" (see
+  // every lib/intelligence/sources/*.ts — they return undefined on missing
+  // key, non-2xx response, or bad shape). Don't lock that failure in for
+  // the full success TTL (which for some sources is hours) — retry soon
+  // instead, so recovery (key just added, rate limit passed, upstream back
+  // up) shows up within seconds instead of requiring a server restart.
+  const isEmpty = value === undefined;
+  const effectiveTtl = isEmpty ? Math.min(ttlMs, 10_000) : ttlMs;
+  store.set(key, { value, expiresAt: now + effectiveTtl });
   return value;
+}
+
+/** Wraps a source promise so a rejection is logged (which source, why) before falling back — a bare `.catch(() => fallback)` discards that reason silently, which is exactly why "the key is in .env but nothing shows up" is hard to debug. */
+export function logged<T>(label: string, promise: Promise<T>, fallback: T): Promise<T> {
+  return promise.catch((err) => {
+    console.error(`[${label}] ${err instanceof Error ? err.message : err}`);
+    return fallback;
+  });
 }

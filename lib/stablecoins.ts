@@ -27,10 +27,16 @@ export async function getStablecoinSupply(): Promise<StablecoinReading | undefin
       const res = await fetch("https://stablecoins.llama.fi/stablecoins?includePrices=false", {
         next: { revalidate: 900 },
       });
-      if (!res.ok) return undefined;
+      if (!res.ok) {
+        console.error(`[defillama] stablecoins: HTTP ${res.status} ${res.statusText}`);
+        return undefined;
+      }
       const json = (await res.json()) as { peggedAssets?: DefiLlamaStablecoin[] };
       const assets = json.peggedAssets ?? [];
-      if (!assets.length) return undefined;
+      if (!assets.length) {
+        console.error("[defillama] stablecoins: empty peggedAssets — response shape may have changed");
+        return undefined;
+      }
 
       let total = 0;
       let prevTotal = 0;
@@ -49,7 +55,8 @@ export async function getStablecoinSupply(): Promise<StablecoinReading | undefin
         change24hUsd: prevTotal ? total - prevTotal : undefined,
         topSymbol: top?.symbol,
       } satisfies StablecoinReading;
-    } catch {
+    } catch (err) {
+      console.error(`[defillama] stablecoins: ${err instanceof Error ? err.message : err}`);
       return undefined;
     }
   });

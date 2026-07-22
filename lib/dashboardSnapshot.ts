@@ -1,6 +1,7 @@
 import { getSnapshot, type NoctrunSnapshot } from "./snapshot";
 import { getStablecoinSupply, type StablecoinReading } from "./stablecoins";
 import { getDxyProxy, getM2Supply, type DxyReading, type M2Reading } from "./macro";
+import { logged } from "./cache";
 import {
   buildDumpCandidates,
   buildHighMomentum,
@@ -59,14 +60,16 @@ export interface DashboardSnapshot {
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const [base, stablecoin, dxy, m2, wallet, stats, openSignals, perf, recentTrades] = await Promise.all([
     getSnapshot(),
-    getStablecoinSupply().catch(() => undefined),
-    getDxyProxy().catch(() => undefined),
-    getM2Supply().catch(() => undefined),
+    logged("stablecoins (DefiLlama)", getStablecoinSupply(), undefined),
+    logged("dxy (FRED)", getDxyProxy(), undefined),
+    logged("m2 (FRED)", getM2Supply(), undefined),
     getWallet(),
     getStatistics(),
     listSignals({ status: ["new", "open", "tp1_hit"], limit: 30 }),
-    getPerformanceReport().catch(() => ({ equityCurve: [] as EquityPoint[] })),
-    getJournalEntries(8).catch(() => [] as JournalWithSignal[]),
+    logged("paperTrader performance", getPerformanceReport(), { equityCurve: [] as EquityPoint[] } as Awaited<
+      ReturnType<typeof getPerformanceReport>
+    >),
+    logged("paperTrader journal", getJournalEntries(8), [] as JournalWithSignal[]),
   ]);
 
   const altseason = computeAltseasonIndex(base.markets);

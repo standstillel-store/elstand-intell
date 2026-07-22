@@ -19,9 +19,15 @@ export async function fetchTwelveDataSeries(symbol: string, points = 25): Promis
   try {
     const url = `${TWELVEDATA_BASE}?symbol=${encodeURIComponent(symbol)}&interval=1h&outputsize=${points}&apikey=${apiKey}`;
     const res = await fetch(url, { next: { revalidate: 30 } });
-    if (!res.ok) return undefined;
-    const json = (await res.json()) as { values?: { datetime: string; close: string }[]; status?: string };
-    if (json.status === "error" || !json.values?.length) return undefined;
+    if (!res.ok) {
+      console.error(`[twelvedata] ${symbol}: HTTP ${res.status} ${res.statusText}`);
+      return undefined;
+    }
+    const json = (await res.json()) as { values?: { datetime: string; close: string }[]; status?: string; message?: string };
+    if (json.status === "error" || !json.values?.length) {
+      console.error(`[twelvedata] ${symbol}: ${json.message ?? "no values in response — check plan/symbol coverage"}`);
+      return undefined;
+    }
 
     const latestDatetime = json.values[0].datetime; // TwelveData returns newest-first
     const closes = [...json.values]
@@ -34,7 +40,8 @@ export async function fetchTwelveDataSeries(symbol: string, points = 25): Promis
     const first = closes[0];
     const changePct = first ? ((latest - first) / first) * 100 : undefined;
     return { value: latest, changePct, series: closes, asOf: latestDatetime };
-  } catch {
+  } catch (err) {
+    console.error(`[twelvedata] ${symbol}: ${err instanceof Error ? err.message : err}`);
     return undefined;
   }
 }
