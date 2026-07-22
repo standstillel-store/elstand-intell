@@ -1,6 +1,7 @@
 import { getSnapshot, type NoctrunSnapshot } from "./snapshot";
 import { getStablecoinSupply, type StablecoinReading } from "./stablecoins";
 import { getDxyProxy, getM2Supply, type DxyReading, type M2Reading } from "./macro";
+import { getExchangeFlow, type ExchangeFlowReading } from "./intelligence/sources/cryptoquant";
 import { logged } from "./cache";
 import {
   buildDumpCandidates,
@@ -36,6 +37,8 @@ export interface DashboardSnapshot {
   altseason?: AltseasonReading;
   macro: MacroReading;
   whaleSummary: WhaleSummary;
+  /** Real BTC exchange inflow/outflow/netflow from CryptoQuant. Undefined without CRYPTOQUANT_API_KEY (Professional/Premium plan) — see lib/intelligence/sources/cryptoquant.ts. */
+  exchangeFlow?: ExchangeFlowReading;
   tagline: string;
   aiSummary: string;
   dumpCandidates: MomentumCandidate[];
@@ -58,11 +61,12 @@ export interface DashboardSnapshot {
  * duplicates a network call getSnapshot() already makes.
  */
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
-  const [base, stablecoin, dxy, m2, wallet, stats, openSignals, perf, recentTrades] = await Promise.all([
+  const [base, stablecoin, dxy, m2, exchangeFlow, wallet, stats, openSignals, perf, recentTrades] = await Promise.all([
     getSnapshot(),
     logged("stablecoins (DefiLlama)", getStablecoinSupply(), undefined),
     logged("dxy (FRED)", getDxyProxy(), undefined),
     logged("m2 (FRED)", getM2Supply(), undefined),
+    logged("exchangeFlow (CryptoQuant)", getExchangeFlow("btc"), undefined),
     getWallet(),
     getStatistics(),
     listSignals({ status: ["new", "open", "tp1_hit"], limit: 30 }),
@@ -92,6 +96,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     altseason,
     macro,
     whaleSummary,
+    exchangeFlow,
     tagline,
     aiSummary,
     dumpCandidates,

@@ -221,7 +221,14 @@ export default async function Home() {
           <CryptoHeatmap markets={markets} rugpullRisks={rugpullRisks} smartMoneyAccumulation={snap.smartMoneyAccumulation} />
           </div>
 
-          <WhaleLiquidityPanel transfers={whales} whaleSummary={snap.whaleSummary} funding={funding} liquiditySymbol="BTCUSDT" />
+          <WhaleLiquidityPanel
+            transfers={whales}
+            whaleSummary={snap.whaleSummary}
+            funding={funding}
+            liquiditySymbol="BTCUSDT"
+            exchangeFlow={snap.exchangeFlow}
+            btcPriceUsd={btcMarket?.current_price}
+          />
 
           <InstitutionalFlowPanel smartMoney={snap.smartMoneyAccumulation} />
 

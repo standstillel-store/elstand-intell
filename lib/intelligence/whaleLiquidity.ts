@@ -1,6 +1,7 @@
 import type { WhaleTransfer, FundingInfo } from "@/lib/types";
 import type { WhaleSummary } from "@/lib/market-insights";
 import type { DisplayTone, TrendTone } from "./shared";
+import type { ExchangeFlowReading } from "./sources/cryptoquant";
 
 export interface WhaleTrackerCard {
   label: string;
@@ -20,26 +21,50 @@ function formatWhaleUsd(n: number): string {
 }
 
 /**
- * Whale Tracker cards derived from the real WhaleTransfer feed, with two
+ * Whale Tracker cards derived from the real WhaleTransfer feed, with
  * honesty caveats flagged inline via `sample`:
  *  - lib/alchemy.ts currently watches a handful of ERC-20 tokens (WETH,
  *    USDT, LINK, UNI, SHIB, PEPE), not native BTC — a genuine "Large BTC
  *    Transaction" needs a BTC-chain data source before this shows a real
  *    number, so it falls back to the largest tracked transfer instead.
  *  - `direction` in that feed is currently always "wallet-to-wallet" (no
- *    exchange-address tagging yet), so Exchange Inflow/Outflow can't be
- *    computed for real until specific exchange addresses are tagged. The
- *    moment that lands, this function starts returning live numbers with
- *    no changes needed here.
+ *    exchange-address tagging yet), so a wallet-transfer-only Exchange
+ *    Inflow/Outflow can't be computed for real from `transfers` alone.
+ *
+ * Exchange Inflow/Outflow now has a real source: pass a CryptoQuant
+ * `flow` reading (lib/intelligence/sources/cryptoquant.ts, needs
+ * CRYPTOQUANT_API_KEY on a Professional/Premium plan — see honesty note
+ * there) and `btcPriceUsd` to convert its native-BTC totals to USD. When
+ * `flow` is present these two cards use it directly and stop depending on
+ * exchange-address tagging entirely. Without it, they fall back to the
+ * previous wallet-transfer estimate (still gated behind
+ * `hasDirectionalData`, which stays false until addresses are tagged).
  */
-export function buildWhaleTrackerCards(transfers: WhaleTransfer[], summary?: WhaleSummary): WhaleTrackerCard[] {
+export function buildWhaleTrackerCards(
+  transfers: WhaleTransfer[],
+  summary?: WhaleSummary,
+  flow?: ExchangeFlowReading,
+  btcPriceUsd?: number,
+): WhaleTrackerCard[] {
   const btcTransfers = transfers.filter((t) => t.asset.toUpperCase() === "BTC");
   const largest = btcTransfers.length ? [...btcTransfers].sort((a, b) => b.valueUsd - a.valueUsd)[0] : summary?.largest;
 
-  const inflow = transfers.filter((t) => t.direction === "in").reduce((s, t) => s + t.valueUsd, 0);
-  const outflow = transfers.filter((t) => t.direction === "out").reduce((s, t) => s + t.valueUsd, 0);
+  const hasRealFlow = !!flow && !!btcPriceUsd;
+  const flowInflowUsd = hasRealFlow ? flow!.inflow * btcPriceUsd! : 0;
+  const flowOutflowUsd = hasRealFlow ? flow!.outflow * btcPriceUsd! : 0;
+  const flowNetflowUsd = hasRealFlow ? flow!.netflow * btcPriceUsd! : 0;
+
+  const walletInflow = transfers.filter((t) => t.direction === "in").reduce((s, t) => s + t.valueUsd, 0);
+  const walletOutflow = transfers.filter((t) => t.direction === "out").reduce((s, t) => s + t.valueUsd, 0);
   const hasDirectionalData = transfers.some((t) => t.direction === "in" || t.direction === "out");
-  const netAccumulation = outflow - inflow;
+  const walletNetAccumulation = walletOutflow - walletInflow;
+
+  // Prefer the real CryptoQuant flow; otherwise fall back to the older
+  // wallet-transfer estimate; otherwise "—" / waiting, same as before.
+  const inflow = hasRealFlow ? flowInflowUsd : walletInflow;
+  const outflow = hasRealFlow ? flowOutflowUsd : walletOutflow;
+  const netAccumulation = hasRealFlow ? -flowNetflowUsd : walletNetAccumulation; // netflow = inflow - outflow, so accumulation is its negation
+  const hasAnyDirectionalData = hasRealFlow || hasDirectionalData;
 
   return [
     {
@@ -55,24 +80,34 @@ export function buildWhaleTrackerCards(transfers: WhaleTransfer[], summary?: Wha
     },
     {
       label: "Exchange Inflow",
-      value: hasDirectionalData ? formatWhaleUsd(inflow) : "—",
-      hint: hasDirectionalData ? "Potensi tekanan jual" : "Perlu tagging alamat exchange",
+      value: hasAnyDirectionalData ? formatWhaleUsd(inflow) : "—",
+      hint: hasRealFlow
+        ? `Potensi tekanan jual · ${flow!.exchange.replace("_", " ")} (CryptoQuant)`
+        : hasDirectionalData
+          ? "Potensi tekanan jual"
+          : "Perlu CryptoQuant API atau tagging alamat exchange",
       tone: "down",
-      sample: !hasDirectionalData,
+      sample: !hasAnyDirectionalData,
     },
     {
       label: "Exchange Outflow",
-      value: hasDirectionalData ? formatWhaleUsd(outflow) : "—",
-      hint: hasDirectionalData ? "Sinyal potensi accumulation" : "Perlu tagging alamat exchange",
+      value: hasAnyDirectionalData ? formatWhaleUsd(outflow) : "—",
+      hint: hasRealFlow
+        ? `Sinyal potensi accumulation · ${flow!.exchange.replace("_", " ")} (CryptoQuant)`
+        : hasDirectionalData
+          ? "Sinyal potensi accumulation"
+          : "Perlu CryptoQuant API atau tagging alamat exchange",
       tone: "up",
-      sample: !hasDirectionalData,
+      sample: !hasAnyDirectionalData,
     },
     {
       label: "Wallet Accumulation",
-      value: hasDirectionalData ? formatWhaleUsd(netAccumulation) : summary ? formatWhaleUsd(summary.totalUsd) : "—",
-      hint: hasDirectionalData ? "Net outflow dari exchange (tertimbang periode data)" : `${summary?.count ?? 0} transfer besar terpantau`,
-      tone: hasDirectionalData ? (netAccumulation >= 0 ? "up" : "down") : "neutral",
-      sample: !hasDirectionalData,
+      value: hasAnyDirectionalData ? formatWhaleUsd(netAccumulation) : summary ? formatWhaleUsd(summary.totalUsd) : "—",
+      hint: hasAnyDirectionalData
+        ? `Net outflow dari exchange (${hasRealFlow ? "1 jam terakhir" : "tertimbang periode data"})`
+        : `${summary?.count ?? 0} transfer besar terpantau`,
+      tone: hasAnyDirectionalData ? (netAccumulation >= 0 ? "up" : "down") : "neutral",
+      sample: !hasAnyDirectionalData,
     },
   ];
 }

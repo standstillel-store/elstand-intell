@@ -3,6 +3,7 @@ import { Waves, Droplets } from "lucide-react";
 import { SectionHeader } from "@/components/SectionHeader";
 import type { WhaleTransfer, FundingInfo } from "@/lib/types";
 import type { WhaleSummary } from "@/lib/market-insights";
+import type { ExchangeFlowReading } from "@/lib/intelligence/sources/cryptoquant";
 import {
   buildWhaleTrackerCards,
   getSampleWhaleTrackerCards,
@@ -37,13 +38,21 @@ export function WhaleLiquidityPanel({
   whaleSummary,
   funding,
   liquiditySymbol = "BTCUSDT",
+  exchangeFlow,
+  btcPriceUsd,
 }: {
   transfers?: WhaleTransfer[];
   whaleSummary?: WhaleSummary;
   funding?: FundingInfo[];
   liquiditySymbol?: string;
+  /** Real CryptoQuant exchange flow — see lib/intelligence/sources/cryptoquant.ts. Undefined without CRYPTOQUANT_API_KEY, and the cards fall back gracefully. */
+  exchangeFlow?: ExchangeFlowReading;
+  /** BTC/USD spot price, used only to convert exchangeFlow's native-BTC totals to USD. */
+  btcPriceUsd?: number;
 }) {
-  const whaleCards = transfers ? buildWhaleTrackerCards(transfers, whaleSummary) : getSampleWhaleTrackerCards();
+  const whaleCards = transfers
+    ? buildWhaleTrackerCards(transfers, whaleSummary, exchangeFlow, btcPriceUsd)
+    : getSampleWhaleTrackerCards();
   const liquidity = (funding ? buildLiquidityReading(funding, liquiditySymbol) : undefined) ?? getSampleLiquidityReading();
 
   const fundingValue =
