@@ -1,15 +1,14 @@
-import { Sparkles } from "lucide-react";
-import { SectionHeader } from "@/components/SectionHeader";
+import { TerminalReportView } from "@/components/ui/TerminalReportView";
+import type { TerminalReport } from "@/lib/terminalReport";
 
-/** Renders the plain-language read-out from lib/analysis.ts's generateMarketSummary — same rule-based engine, no extra LLM cost. */
-export function AISummaryCard({ summary }: { summary: string }) {
-  return (
-    <div className="glow-card p-4">
-      <SectionHeader code="SUM" title="AI Summary" />
-      <div className="flex gap-2.5">
-        <Sparkles size={15} className="mt-0.5 shrink-0 text-signal-glow" />
-        <p className="text-[13px] leading-relaxed text-ink-muted">{summary}</p>
-      </div>
-    </div>
-  );
+/**
+ * V3 "AI Summary" redesign — was a Sparkles-icon paragraph, now the same
+ * terminal card format as the AI Final Conclusion card and every chat
+ * reply. `report` is built once in app/dashboard/page.tsx by reshaping the
+ * same sentiment/pulse/final-conclusion numbers already shown elsewhere on
+ * the page (lib/intelligence/marketSnapshotReport.ts) — nothing here
+ * computes anything new.
+ */
+export function AISummaryCard({ report }: { report: TerminalReport }) {
+  return <TerminalReportView report={report} variant="card" />;
 }

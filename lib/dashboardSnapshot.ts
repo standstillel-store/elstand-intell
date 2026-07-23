@@ -22,7 +22,6 @@ import {
   type MacroReading,
   type WhaleSummary,
 } from "./market-insights";
-import { generateMarketSummary } from "./analysis";
 import { getWallet, getDefaultWallet, getStatistics, getDefaultStatistics } from "./elvoid/paperTrader";
 import { listSignals } from "./elvoid/signals";
 import { getPerformanceReport, getJournalEntries } from "./elvoid/performance";
@@ -40,7 +39,6 @@ export interface DashboardSnapshot {
   /** Real BTC exchange inflow/outflow/netflow from CryptoQuant. Undefined without CRYPTOQUANT_API_KEY (Professional/Premium plan) — see lib/intelligence/sources/cryptoquant.ts. */
   exchangeFlow?: ExchangeFlowReading;
   tagline: string;
-  aiSummary: string;
   dumpCandidates: MomentumCandidate[];
   highMomentum: MomentumCandidate[];
   smartMoneyAccumulation: SmartMoneyEntry[];
@@ -80,7 +78,6 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const macro = computeMacroStatus(base.calendar);
   const whaleSummary = computeWhaleSummary(base.whales);
   const tagline = computeSystemTagline(base.fng?.now.value, base.rugpullRisks.length, base.pumpCandidates.length);
-  const aiSummary = generateMarketSummary(base);
 
   const dumpCandidates = buildDumpCandidates(base.markets, base.funding, base.whales);
   const highMomentum = buildHighMomentum(base.markets);
@@ -98,7 +95,6 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     whaleSummary,
     exchangeFlow,
     tagline,
-    aiSummary,
     dumpCandidates,
     highMomentum,
     smartMoneyAccumulation,

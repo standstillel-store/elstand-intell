@@ -28,6 +28,9 @@ import { getCryptoPanicNews } from "@/lib/intelligence/sources/cryptoNews";
 import { getMacroEventsView, getNextHighImpactEvent } from "@/lib/intelligence/macroEvents";
 import { deriveGlobalSentiment } from "@/lib/intelligence/globalSentiment";
 import { deriveAssetWhaleNote } from "@/lib/intelligence/whaleLiquidity";
+import { deriveMarketPulse, type MarketPulseInputs } from "@/lib/intelligence/marketPulse";
+import { deriveFinalConclusion } from "@/lib/intelligence/finalConclusion";
+import { buildMarketSnapshotReport } from "@/lib/intelligence/marketSnapshotReport";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -121,6 +124,40 @@ export default async function Home() {
   const btcWhaleNote = deriveAssetWhaleNote(whales, ["BTC"]);
   const ethWhaleNote = deriveAssetWhaleNote(whales, ["ETH", "WETH"]);
   const institutionalFlow = await getInstitutionalFlowData();
+
+  const pulseInputs: MarketPulseInputs = {
+    sentiment,
+    macro: snap.macro,
+    whaleSummary: snap.whaleSummary,
+    fngValue: fng?.now.value,
+    fngClassification: fng?.now.classification,
+    stablecoinChange24hUsd: snap.stablecoin?.change24hUsd,
+    btcFundingRate: btcFunding?.lastFundingRate,
+    altseason: snap.altseason,
+    etfNetTotalUsd: institutionalFlow.connected ? institutionalFlow.etfNetTotalUsd : undefined,
+  };
+  const pulseMetrics = deriveMarketPulse(pulseInputs);
+  const finalConclusion = deriveFinalConclusion({
+    sentiment,
+    btcChange24h: btcMarket?.price_change_percentage_24h_in_currency,
+    ethChange24h: ethMarket?.price_change_percentage_24h_in_currency,
+    altChange24h,
+    watchlist,
+  });
+  // AI Summary card — same underlying numbers as Market Pulse + Final
+  // Conclusion below, reshaped into the V3 "Market Snapshot" terminal
+  // format (lib/intelligence/marketSnapshotReport.ts). Not a re-derivation.
+  const marketSnapshotReport = buildMarketSnapshotReport({
+    pulse: pulseMetrics,
+    finalConclusion,
+    totalMarketCapUsd: global?.total_market_cap.usd,
+    marketCapChange24h: global?.market_cap_change_percentage_24h_usd,
+    btcDominance: global?.market_cap_percentage.btc,
+    fngValue: fng?.now.value,
+    fngClassification: fng?.now.classification,
+    btcFundingRate: btcFunding?.lastFundingRate,
+    btcOpenInterestUsd: btcFunding?.openInterestValue,
+  });
 
   return (
     <main className="min-h-screen lg:pt-14">
@@ -236,21 +273,9 @@ export default async function Home() {
 
           <AltcoinScannerTable rows={scannerRows} />
 
-          <MarketPulsePanel
-            inputs={{
-              sentiment,
-              macro: snap.macro,
-              whaleSummary: snap.whaleSummary,
-              fngValue: fng?.now.value,
-              fngClassification: fng?.now.classification,
-              stablecoinChange24hUsd: snap.stablecoin?.change24hUsd,
-              btcFundingRate: btcFunding?.lastFundingRate,
-              altseason: snap.altseason,
-              etfNetTotalUsd: institutionalFlow.connected ? institutionalFlow.etfNetTotalUsd : undefined,
-            }}
-          />
+          <MarketPulsePanel inputs={pulseInputs} />
 
-          <AISummaryCard summary={snap.aiSummary} />
+          <AISummaryCard report={marketSnapshotReport} />
 
           <AIFinalConclusion
             sentiment={sentiment}
@@ -280,7 +305,7 @@ export default async function Home() {
         <Footer />
       </div>
 
-      <AIChatDock context={{ newsCount: news.length, fundingCount: funding.length }} />
+      <AIChatDock />
     </main>
   );
 }

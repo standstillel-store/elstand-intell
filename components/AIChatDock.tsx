@@ -1,13 +1,16 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
-import { Sparkles, X, Send, LineChart } from "lucide-react";
+import { TerminalSquare, X, Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useElVoidChat } from "@/lib/hooks/useElVoidChat";
+import { LiveDot } from "@/components/ui/LiveDot";
+import { TerminalReportView } from "@/components/ui/TerminalReportView";
+import { TerminalPromptLine, TerminalLoadingLine, TerminalErrorLine } from "@/components/ui/TerminalChatUI";
 
-export function AIChatDock({ context }: { context: Record<string, unknown> }) {
+/** Floating dock, every page. V3: terminal prompt/response instead of chat bubbles — see lib/terminalReport.ts. */
+export function AIChatDock() {
   const [open, setOpen] = useState(false);
-  const { msgs, input, setInput, loading, send } = useElVoidChat(context);
+  const { msgs, input, setInput, loading, loadingLabel, send, retry } = useElVoidChat();
 
   return (
     <div className="fixed bottom-4 right-4 z-40 sm:bottom-6 sm:right-6">
@@ -20,42 +23,42 @@ export function AIChatDock({ context }: { context: Record<string, unknown> }) {
             transition={{ duration: 0.18 }}
             className="mb-3 flex h-[32rem] w-[24rem] max-w-[90vw] flex-col rounded-xl border border-line bg-bg-raised shadow-2xl shadow-black/50"
           >
-            <div className="flex items-center justify-between border-b border-line px-3 py-2">
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <Sparkles size={14} className="text-signal-glow" /> ElVoid AI
+            <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+              <span className="flex items-center gap-1.5">
+                <TerminalSquare size={13} className="text-signal-glow" />
+                <span className="mono-num text-[11px] font-bold tracking-widest text-ink">ELVOID AI</span>
+                <LiveDot tone="signal" />
               </span>
               <button onClick={() => setOpen(false)} aria-label="Close chat" className="text-ink-muted hover:text-ink">
                 <X size={16} />
               </button>
             </div>
-            <div className="flex-1 space-y-2 overflow-y-auto p-3">
-              {msgs.map((m, i) => (
-                <div
-                  key={i}
-                  className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
-                    m.role === "user" ? "ml-auto bg-signal/20 text-ink" : "bg-bg-surface text-ink"
-                  }`}
-                >
-                  {m.text}
-                  {m.action?.type === "open_chart" && (
-                    <Link
-                      href={`/ai-signal?tab=chart&symbol=${m.action.symbol}`}
-                      className="mt-2 flex items-center gap-1.5 rounded-md border border-signal/40 px-2.5 py-1.5 text-xs font-medium text-signal-glow hover:border-signal"
-                    >
-                      <LineChart size={12} /> Buka Chart {m.action.symbol}
-                    </Link>
-                  )}
-                </div>
-              ))}
-              {loading && <div className="text-xs text-ink-muted">Thinking…</div>}
+
+            <div className="flex-1 space-y-3 overflow-y-auto p-3">
+              {msgs.map((m, i) => {
+                if (m.role === "user") return <TerminalPromptLine key={i} text={m.text} />;
+                if (m.role === "error") {
+                  return (
+                    <TerminalErrorLine
+                      key={i}
+                      reason={`Gagal memproses "${m.text}".`}
+                      retrying={m.retrying}
+                      onRetry={() => retry(m.text)}
+                    />
+                  );
+                }
+                return <TerminalReportView key={i} report={m.report} variant="inline" />;
+              })}
+              {loading && <TerminalLoadingLine label={loadingLabel} />}
             </div>
+
             <div className="flex items-center gap-2 border-t border-line p-2">
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && send()}
-                placeholder="Ask about the market…"
-                className="flex-1 rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-signal"
+                placeholder="analisa btc, whale activity..."
+                className="mono-num flex-1 rounded-md border border-line bg-bg px-2.5 py-1.5 text-[13px] outline-none focus:border-signal"
               />
               <button
                 onClick={() => send()}
@@ -69,12 +72,15 @@ export function AIChatDock({ context }: { context: Record<string, unknown> }) {
           </motion.div>
         )}
       </AnimatePresence>
+
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-signal/40 bg-bg-raised px-4 py-2.5 text-sm font-medium shadow-lg shadow-signal/10 hover:border-signal"
+          className="flex items-center gap-2 rounded-full border border-signal/40 bg-bg-raised px-4 py-2.5 shadow-lg shadow-signal/10 hover:border-signal"
         >
-          <Sparkles size={16} className="text-signal-glow" /> Ask ElVoid AI
+          <TerminalSquare size={15} className="text-signal-glow" />
+          <span className="mono-num text-[12px] font-semibold tracking-wide text-ink">root@elvoid</span>
+          <LiveDot tone="signal" />
         </button>
       )}
     </div>

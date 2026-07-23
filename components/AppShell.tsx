@@ -46,7 +46,7 @@ export function AppShell({
         <Footer />
       </div>
 
-      <AIChatDock context={{}} />
+      <AIChatDock />
     </div>
   );
 }

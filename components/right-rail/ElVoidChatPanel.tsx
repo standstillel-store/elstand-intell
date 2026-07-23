@@ -1,15 +1,16 @@
 "use client";
-import { Send, Loader2 } from "lucide-react";
-import { LineChart } from "lucide-react";
-import Link from "next/link";
+import { Send } from "lucide-react";
 import { useRef, useEffect } from "react";
 import { useElVoidChat } from "@/lib/hooks/useElVoidChat";
 import { SectionHeader } from "@/components/SectionHeader";
+import { TerminalReportView } from "@/components/ui/TerminalReportView";
+import { TerminalPromptLine, TerminalLoadingLine, TerminalErrorLine } from "@/components/ui/TerminalChatUI";
 
 const QUICK_PROMPTS = ["Analisa BTC", "Whale activity", "Risk tertinggi", "Momentum sekarang"];
 
-export function ElVoidChatPanel({ context }: { context: Record<string, unknown> }) {
-  const { msgs, input, setInput, loading, send } = useElVoidChat(context);
+/** Inline chat panel (right rail). V3: terminal prompt/response instead of chat bubbles — see lib/terminalReport.ts. */
+export function ElVoidChatPanel() {
+  const { msgs, input, setInput, loading, loadingLabel, send, retry } = useElVoidChat();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -19,30 +20,22 @@ export function ElVoidChatPanel({ context }: { context: Record<string, unknown> 
   return (
     <div className="glow-card flex h-[420px] flex-col p-4">
       <SectionHeader code="AI" title="ElVoid AI Chat" hint="Live" />
-      <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto pr-1">
-        {msgs.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[92%] animate-fadeUp whitespace-pre-wrap rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
-              m.role === "user" ? "ml-auto bg-signal/20 text-ink" : "bg-bg-raised text-ink"
-            }`}
-          >
-            {m.text}
-            {m.action?.type === "open_chart" && (
-              <Link
-                href={`/ai-signal?tab=chart&symbol=${m.action.symbol}`}
-                className="mt-2 flex items-center gap-1.5 rounded-md border border-signal/40 px-2.5 py-1.5 text-[11px] font-medium text-signal-glow hover:border-signal"
-              >
-                <LineChart size={12} /> Buka Chart {m.action.symbol}
-              </Link>
-            )}
-          </div>
-        ))}
-        {loading && (
-          <div className="flex items-center gap-1.5 text-xs text-ink-muted">
-            <Loader2 size={12} className="animate-spin" /> ElVoid AI berpikir…
-          </div>
-        )}
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
+        {msgs.map((m, i) => {
+          if (m.role === "user") return <TerminalPromptLine key={i} text={m.text} />;
+          if (m.role === "error") {
+            return (
+              <TerminalErrorLine
+                key={i}
+                reason={`Gagal memproses "${m.text}".`}
+                retrying={m.retrying}
+                onRetry={() => retry(m.text)}
+              />
+            );
+          }
+          return <TerminalReportView key={i} report={m.report} variant="inline" />;
+        })}
+        {loading && <TerminalLoadingLine label={loadingLabel} />}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -63,8 +56,8 @@ export function ElVoidChatPanel({ context }: { context: Record<string, unknown> 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Tanya ElVoid AI…"
-          className="flex-1 rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-signal"
+          placeholder="analisa btc, whale activity..."
+          className="mono-num flex-1 rounded-md border border-line bg-bg px-2.5 py-1.5 text-[13px] outline-none focus:border-signal"
         />
         <button
           onClick={() => send()}

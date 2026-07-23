@@ -1,44 +1,36 @@
 "use client";
 import { useState } from "react";
-import { Sparkles, Send, X, Loader2 } from "lucide-react";
+import { TerminalSquare, Send, X } from "lucide-react";
+import { useElVoidChat } from "@/lib/hooks/useElVoidChat";
+import { TerminalReportView } from "@/components/ui/TerminalReportView";
+import { TerminalLoadingLine, TerminalErrorLine } from "@/components/ui/TerminalChatUI";
 
 const SUGGESTIONS = ["ringkasan market", "whale activity", "risk tertinggi"];
 
+/** Mobile quick-ask bar. Shares useElVoidChat with AIChatDock/ElVoidChatPanel but only ever shows the latest reply. */
 export function AskNocturnBar() {
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [reply, setReply] = useState<string | null>(null);
+  const { msgs, input, setInput, loading, loadingLabel, send, retry } = useElVoidChat();
+  const [dismissed, setDismissed] = useState(false);
 
-  async function ask(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || loading) return;
-    setLoading(true);
-    setReply(null);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed }),
-      });
-      const data = await res.json();
-      setReply(data.reply ?? "Tidak ada jawaban.");
-    } catch {
-      setReply("Request gagal — coba lagi sebentar.");
-    } finally {
-      setLoading(false);
-    }
+  function ask(text: string) {
+    setDismissed(false);
+    send(text);
   }
+
+  const hasAsked = msgs.length > 1;
+  const lastMsg = msgs[msgs.length - 1];
+  const showLast = hasAsked && !dismissed && lastMsg.role !== "user";
 
   return (
     <div className="px-4 pb-3">
       <div className="flex items-center gap-2 rounded-full border border-line bg-bg-surface px-3.5 py-2.5">
-        <Sparkles size={15} className="shrink-0 text-signal-glow" />
+        <TerminalSquare size={15} className="shrink-0 text-signal-glow" />
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && ask(input)}
-          placeholder="Ask ElVoid..."
-          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+          placeholder="root@elvoid: analisa btc..."
+          className="mono-num min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-faint"
         />
         <button
           onClick={() => ask(input)}
@@ -46,19 +38,16 @@ export function AskNocturnBar() {
           aria-label="Kirim"
           className="shrink-0 text-ink-muted hover:text-signal-glow disabled:opacity-50"
         >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+          <Send size={16} />
         </button>
       </div>
 
-      {!reply && !loading && (
+      {!showLast && !loading && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {SUGGESTIONS.map((s) => (
             <button
               key={s}
-              onClick={() => {
-                setInput(s);
-                ask(s);
-              }}
+              onClick={() => ask(s)}
               className="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-muted hover:border-signal hover:text-ink"
             >
               {s}
@@ -67,17 +56,28 @@ export function AskNocturnBar() {
         </div>
       )}
 
-      {reply && (
+      {loading && (
         <div className="mt-2 rounded-lg border border-line bg-bg-raised p-3">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="eyebrow flex items-center gap-1.5 text-[10px] text-signal-glow">
-              <Sparkles size={11} /> ELVOID AI
-            </span>
-            <button onClick={() => setReply(null)} aria-label="Tutup" className="text-ink-muted hover:text-ink">
-              <X size={14} />
-            </button>
-          </div>
-          <p className="whitespace-pre-wrap text-sm text-ink">{reply}</p>
+          <TerminalLoadingLine label={loadingLabel} />
+        </div>
+      )}
+
+      {showLast && lastMsg.role === "error" && (
+        <div className="mt-2">
+          <TerminalErrorLine reason={`Gagal memproses "${lastMsg.text}".`} retrying={lastMsg.retrying} onRetry={() => retry(lastMsg.text)} />
+        </div>
+      )}
+
+      {showLast && lastMsg.role === "assistant" && (
+        <div className="relative mt-2">
+          <button
+            onClick={() => setDismissed(true)}
+            aria-label="Tutup"
+            className="absolute right-2.5 top-2.5 z-10 text-ink-muted hover:text-ink"
+          >
+            <X size={14} />
+          </button>
+          <TerminalReportView report={lastMsg.report} variant="inline" />
         </div>
       )}
     </div>

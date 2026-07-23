@@ -1,8 +1,8 @@
 import { formatUsd, formatPct, timeAgo } from "./format";
-import { nextEvent } from "./economiccalendar";
 import { buildDumpCandidates, buildSmartMoneyAccumulation } from "./scanner-categories";
 import type { NoctrunSnapshot } from "./snapshot";
 import type { CoinMarket, WhaleTransfer, NewsItem, DexPool } from "./types";
+import type { TerminalReport, ReportRow, ReportTone } from "./terminalReport";
 
 // ---------------------------------------------------------------------------
 // ElVoid AI is not a price oracle. Every line below is derived from the live
@@ -10,19 +10,13 @@ import type { CoinMarket, WhaleTransfer, NewsItem, DexPool } from "./types";
 // news, economic calendar) with plain rule-based logic — no model call, no
 // hallucinated numbers, no API cost. That's the whole point: it stays free
 // and it stays honest about what it does and doesn't know.
+//
+// V3 note: everything below returns a TerminalReport (title + label/value
+// rows + tone + optional list), not a markdown/emoji string. That's the
+// "institutional terminal" format from the V3 brief — see
+// lib/terminalReport.ts. The underlying math/thresholds are unchanged from
+// the previous string-based version; only the output shape changed.
 // ---------------------------------------------------------------------------
-
-function pumpEmoji(score: number) {
-  if (score >= 70) return "🟢";
-  if (score >= 40) return "🟡";
-  return "🔴";
-}
-
-function riskEmoji(score: number) {
-  if (score >= 60) return "🔴";
-  if (score >= 30) return "🟡";
-  return "🟢";
-}
 
 function findMarket(markets: CoinMarket[], query: string): CoinMarket | undefined {
   const q = query.trim().toLowerCase();
@@ -73,13 +67,41 @@ function supportResistance(market: CoinMarket) {
   return { high, low };
 }
 
+function newsTone(sentiment?: NewsItem["sentiment"]): ReportTone {
+  if (sentiment === "positive") return "up";
+  if (sentiment === "negative") return "down";
+  return "neutral";
+}
+
+function riskTone(score?: number): ReportTone {
+  if (score === undefined) return "neutral";
+  if (score >= 60) return "down";
+  if (score >= 30) return "amber";
+  return "up";
+}
+
+function momentumTone(score: number): ReportTone {
+  if (score >= 70) return "up";
+  if (score >= 40) return "amber";
+  return "down";
+}
+
 // ---------------------------------------------------------------------------
-// Per-coin report, in the 6-section ElVoid AI format.
+// Per-coin report. Reuses the exact same lookups as getCoinReportData()
+// below (same funding/whale/risk/support-resistance/news matches, same
+// buildConclusion()) so the chat and the Token Analyzer widget never
+// disagree on the same coin.
 // ---------------------------------------------------------------------------
-export function analyzeCoin(query: string, snap: NoctrunSnapshot): string {
+export function buildCoinTerminalReport(query: string, snap: NoctrunSnapshot): TerminalReport {
   const market = findMarket(snap.markets, query);
   if (!market) {
-    return `Saya tidak menemukan "${query}" di 150 coin teratas yang ElVoid AI pantau saat ini. Coba simbol lain, atau tanya soal market secara umum, whale activity, atau risk.`;
+    return {
+      eyebrow: "AI",
+      title: "COIN NOT FOUND",
+      found: false,
+      emptyNote: `Saya tidak menemukan "${query}" di 150 coin teratas yang ElVoid AI pantau saat ini. Coba simbol lain, atau tanya soal market secara umum, whale activity, atau risk.`,
+      rows: [],
+    };
   }
 
   const symbol = market.symbol.toUpperCase();
@@ -90,72 +112,100 @@ export function analyzeCoin(query: string, snap: NoctrunSnapshot): string {
   const sr = supportResistance(market);
   const news = newsFor(market.symbol, market.name, snap.news);
   const score = pump?.score ?? 0;
+  const change24h = market.price_change_percentage_24h_in_currency ?? 0;
 
-  const lines: string[] = [];
-  lines.push(`## ${market.name} (${symbol}) Analysis`);
-  lines.push("");
+  const rows: ReportRow[] = [
+    {
+      label: "PRICE",
+      value: formatUsd(market.current_price),
+      detail: `${formatPct(change24h)} 24h · Rank #${market.market_cap_rank ?? "-"}`,
+      tone: change24h >= 0 ? "up" : "down",
+      connected: true,
+    },
+    {
+      label: "MOMENTUM",
+      value: `${score}/100`,
+      detail: pump?.reasons?.[0] ?? (pump ? `Confidence ${pump.confidence}%` : "Belum lolos threshold skor"),
+      tone: momentumTone(score),
+      connected: true,
+    },
+    {
+      label: "WHALE",
+      value: whaleMatches.length ? formatUsd(whaleTotal) : "Tidak Ada",
+      detail: whaleMatches.length ? `${whaleMatches.length} transfer besar · 24 jam terakhir` : "Belum ada transfer besar terdeteksi",
+      tone: whaleMatches.length ? "signal" : "neutral",
+      connected: true,
+    },
+    {
+      label: "RISK",
+      value: risk ? `${risk.score}/100` : "Tidak Terdeteksi",
+      detail: risk ? risk.flags.slice(0, 2).join("; ") || "-" : "Bukan jaminan aman — tetap DYOR",
+      tone: riskTone(risk?.score),
+      connected: true,
+    },
+  ];
 
-  // 📊 Market Summary
-  lines.push("📊 **Market Summary**");
-  lines.push(
-    `${symbol} sedang di ${formatUsd(market.current_price)} (${formatPct(market.price_change_percentage_24h_in_currency ?? 0)} 24h). ` +
-      `Market cap ${formatUsd(market.market_cap)} (rank #${market.market_cap_rank}), volume 24h ${formatUsd(market.total_volume)}.`
-  );
-  lines.push("");
-
-  // 🐋 Whale Activity
-  lines.push("🐋 **Whale Activity**");
-  if (whaleMatches.length) {
-    lines.push(`Whale membeli/memindahkan total ${formatUsd(whaleTotal)} dalam 24 jam terakhir (${whaleMatches.length} transaksi besar terdeteksi).`);
-  } else {
-    lines.push("Tidak ada transfer whale besar yang terdeteksi untuk token ini dalam feed saat ini.");
-  }
-  lines.push("");
-
-  // ⚠️ Risk Analysis
-  lines.push("⚠️ **Risk Analysis**");
-  if (risk) {
-    lines.push(`${riskEmoji(risk.score)} Risk score ${risk.score}/100 (confidence ${risk.confidence}%). Flag: ${risk.flags.slice(0, 3).join("; ") || "-"}.`);
-  } else {
-    lines.push("Tidak ada sinyal risiko yang terdeteksi dari data DEX saat ini (bukan jaminan aman — tetap DYOR).");
-  }
-  lines.push("");
-
-  // 📈 Momentum
-  lines.push("📈 **Momentum**");
-  const momentumBits: string[] = [`${pumpEmoji(score)} Momentum Score: ${score}/100${pump ? ` (confidence ${pump.confidence}%)` : ""}`];
-  if (pump?.reasons.length) momentumBits.push(...pump.reasons);
   if (funding) {
-    momentumBits.push(
-      `Funding rate ${(funding.lastFundingRate * 100).toFixed(4)}% (${funding.lastFundingRate < 0 ? "negatif — short bayar long" : "positif"})`
-    );
-    if (funding.openInterestValue) momentumBits.push(`Open Interest ${formatUsd(funding.openInterestValue)}`);
-  }
-  if (sr) {
-    momentumBits.push(`Resistance ~${formatUsd(sr.high)} (7d high), support ~${formatUsd(sr.low)} (7d low)`);
-  }
-  lines.push(momentumBits.join(". ") + ".");
-  lines.push("");
-
-  // 📰 News Impact
-  lines.push("📰 **News Impact**");
-  if (news.length) {
-    for (const n of news.slice(0, 3)) {
-      lines.push(`- [${n.sentiment ?? "neutral"}] ${n.title} (${n.source}, ${timeAgo(n.publishedAt)})`);
+    rows.push({
+      label: "FUNDING",
+      value: `${(funding.lastFundingRate * 100).toFixed(4)}%`,
+      detail: funding.lastFundingRate < 0 ? "Negatif — short bayar long" : "Positif — long bayar short",
+      tone: funding.lastFundingRate < -0.0005 ? "amber" : "neutral",
+      connected: true,
+    });
+    if (funding.openInterestValue) {
+      rows.push({ label: "OPEN INTEREST", value: formatUsd(funding.openInterestValue), tone: "neutral", connected: true });
     }
-  } else {
-    lines.push("Tidak ada berita spesifik yang menyebut token ini dalam feed terbaru.");
   }
-  lines.push("");
 
-  // 💡 Final Conclusion
-  lines.push("💡 **Final Conclusion**");
-  lines.push(buildConclusion({ score, riskScore: risk?.score, funding, sr, market, whaleTotal }));
+  if (sr) {
+    rows.push({
+      label: "STRUCTURE",
+      value: `R ${formatUsd(sr.high)}`,
+      detail: `S ${formatUsd(sr.low)} · 7d range`,
+      tone: "neutral",
+      connected: true,
+    });
+  }
 
-  return lines.join("\n");
+  const bearishRisk = (risk?.score ?? 0) >= 60;
+  const bullish = score >= 60;
+  const action: { label: string; tone: ReportTone } = bearishRisk
+    ? { label: "Waspada", tone: "down" }
+    : bullish && whaleTotal > 100_000
+      ? { label: "Momentum Terkonfirmasi", tone: "up" }
+      : bullish
+        ? { label: "Monitor", tone: "amber" }
+        : (funding?.lastFundingRate ?? 0) < -0.0005
+          ? { label: "Pantau Short Squeeze", tone: "amber" }
+          : { label: "Wait", tone: "neutral" };
+
+  return {
+    eyebrow: symbol,
+    title: `${market.name.toUpperCase()} ANALYSIS`,
+    found: true,
+    statusLabel: change24h >= 2 ? "Bullish" : change24h <= -2 ? "Bearish" : "Neutral",
+    statusTone: change24h >= 2 ? "up" : change24h <= -2 ? "down" : "neutral",
+    rows,
+    listItems: news.slice(0, 3).map((n) => ({
+      primary: n.title,
+      secondary: `${n.source} · ${timeAgo(n.publishedAt)}`,
+      tone: newsTone(n.sentiment),
+    })),
+    conclusion: buildConclusion({ score, riskScore: risk?.score, funding, sr, market, whaleTotal }),
+    actionLabel: action.label,
+    actionTone: action.tone,
+    chartSymbol: symbol,
+  };
 }
 
-function buildConclusion(args: {
+/**
+ * Shared by buildCoinTerminalReport() above and getCoinReportData() below —
+ * one place decides what the conclusion sentence says, so the chat dock and
+ * the Token Analyzer widget can't ever tell two different stories about the
+ * same coin.
+ */
+export function buildConclusion(args: {
   score: number;
   riskScore?: number;
   funding?: { lastFundingRate: number };
@@ -186,156 +236,160 @@ function buildConclusion(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Market-wide report (no specific coin named).
-// ---------------------------------------------------------------------------
-export function generateMarketSummary(snap: NoctrunSnapshot): string {
-  const { markets, global, fng, pumpCandidates, rugpullRisks, whales, news, calendar } = snap;
-  const btc = markets.find((m) => m.symbol === "btc");
-  const upcoming = nextEvent(calendar);
-  const whale24h = whales.reduce((s, w) => s + w.valueUsd, 0);
-  const negNews = news.filter((n) => n.sentiment === "negative").length;
-  const posNews = news.filter((n) => n.sentiment === "positive").length;
-
-  const lines: string[] = [];
-  lines.push("## ElVoid AI Market Snapshot");
-  lines.push("");
-
-  lines.push("📊 **Market Summary**");
-  lines.push(
-    `${global ? `Total market cap ${formatUsd(global.total_market_cap.usd)} (${formatPct(global.market_cap_change_percentage_24h_usd)} 24h), BTC dominance ${global.market_cap_percentage.btc.toFixed(1)}%. ` : ""}` +
-      `${btc ? `BTC di ${formatUsd(btc.current_price)} (${formatPct(btc.price_change_percentage_24h_in_currency ?? 0)} 24h).` : ""}`
-  );
-  lines.push("");
-
-  lines.push("🐋 **Whale Activity**");
-  lines.push(
-    whales.length
-      ? `Total ${formatUsd(whale24h)} dalam ${whales.length} transfer besar terdeteksi lintas watchlist dalam 24 jam terakhir.`
-      : "Tidak ada transfer whale signifikan yang terdeteksi saat ini."
-  );
-  lines.push("");
-
-  lines.push("⚠️ **Risk Analysis**");
-  if (rugpullRisks.length) {
-    const top = rugpullRisks.slice(0, 3).map((r) => `${r.symbol} (${r.score}/100)`).join(", ");
-    lines.push(`${rugpullRisks.length} token DEX menunjukkan sinyal risiko. Tertinggi: ${top}.`);
-  } else {
-    lines.push("Tidak ada token dengan skor risiko tinggi yang terdeteksi saat ini.");
-  }
-  lines.push("");
-
-  lines.push("📈 **Momentum**");
-  if (pumpCandidates.length) {
-    const top = pumpCandidates.slice(0, 3).map((c) => `${pumpEmoji(c.score)} ${c.symbol} (${c.score}/100)`).join(", ");
-    lines.push(`Watchlist momentum tertinggi saat ini: ${top}.`);
-  } else {
-    lines.push("Belum ada token di watchlist momentum yang lolos threshold skor saat ini.");
-  }
-  if (fng) lines.push(`Fear & Greed Index: ${fng.now.value}/100 (${fng.now.classification}).`);
-  lines.push("");
-
-  lines.push("📰 **News Impact**");
-  lines.push(
-    news.length
-      ? `${news.length} berita terpantau (${posNews} positif, ${negNews} negatif).${
-          upcoming ? ` Event ekonomi berikutnya: ${upcoming.title} (${upcoming.country}, ${timeAgo(upcoming.date)}).` : ""
-        }`
-      : `Tidak ada feed berita aktif saat ini.${upcoming ? ` Event ekonomi berikutnya: ${upcoming.title} (${upcoming.country}).` : ""}`
-  );
-  lines.push("");
-
-  lines.push("💡 **Final Conclusion**");
-  lines.push(buildMarketConclusion(fng?.now.value, negNews, pumpCandidates.length));
-
-  return lines.join("\n");
-}
-
-function buildMarketConclusion(fngValue: number | undefined, negNews: number, pumpCount: number): string {
-  if (fngValue !== undefined && fngValue <= 25) {
-    return "Sentimen pasar berada di zona Extreme Fear — historis sering jadi area akumulasi, tapi juga bisa berlanjut turun. Kelola risiko, jangan all-in.";
-  }
-  if (fngValue !== undefined && fngValue >= 75) {
-    return "Sentimen pasar di zona Extreme Greed — waspada koreksi, pertimbangkan take-profit bertahap daripada mengejar FOMO.";
-  }
-  if (negNews > 3) {
-    return "Volume berita negatif cukup tinggi hari ini — cek dulu sumbernya sebelum ambil keputusan, sentimen bisa bias sesaat.";
-  }
-  if (pumpCount > 5) {
-    return "Cukup banyak kandidat momentum hari ini — screening lebih lanjut per-coin disarankan sebelum entry mana pun.";
-  }
-  return "Kondisi pasar relatif netral saat ini. Data ini adalah bahan pertimbangan, bukan rekomendasi — selalu verifikasi mandiri.";
-}
-
-// ---------------------------------------------------------------------------
 // Focused single-section answers (when the user asks about just one thing).
 // ---------------------------------------------------------------------------
-export function generateWhaleReport(snap: NoctrunSnapshot): string {
-  if (!snap.whales.length) return "🐋 Tidak ada transfer whale besar yang terdeteksi saat ini di watchlist.";
-  const lines = ["🐋 **Whale Activity — 24h**", ""];
-  for (const w of snap.whales.slice(0, 8)) {
-    lines.push(`- ${w.asset}: ${formatUsd(w.valueUsd)} (${timeAgo(w.timestamp)})`);
-  }
-  return lines.join("\n");
+export function buildWhaleTerminalReport(snap: NoctrunSnapshot): TerminalReport {
+  const whales = snap.whales;
+  const total = whales.reduce((s, w) => s + w.valueUsd, 0);
+  return {
+    eyebrow: "WHALE",
+    title: "WHALE ACTIVITY — 24H",
+    found: true,
+    rows: [
+      {
+        label: "TOTAL FLOW",
+        value: whales.length ? formatUsd(total) : "Tidak Ada",
+        detail: whales.length ? `${whales.length} transfer besar terdeteksi` : "Tidak ada transfer whale besar saat ini",
+        tone: whales.length ? "signal" : "neutral",
+        connected: true,
+      },
+    ],
+    listItems: whales.slice(0, 8).map((w) => ({
+      primary: `${w.asset} · ${formatUsd(w.valueUsd)}`,
+      secondary: timeAgo(w.timestamp),
+      tone: "signal" as ReportTone,
+    })),
+    conclusion: whales.length
+      ? "Aktivitas di atas adalah transfer besar yang terdeteksi lintas watchlist — bukan sinyal beli/jual otomatis."
+      : "Tidak ada transfer whale besar yang terdeteksi saat ini di watchlist.",
+  };
 }
 
-export function generateRiskReport(snap: NoctrunSnapshot): string {
-  if (!snap.rugpullRisks.length) return "⚠️ Tidak ada token dengan skor risiko tinggi terdeteksi saat ini.";
-  const lines = ["⚠️ **Risk Assessment — Top Flags**", ""];
-  for (const r of snap.rugpullRisks.slice(0, 8)) {
-    lines.push(`- ${riskEmoji(r.score)} ${r.symbol} (${r.score}/100, confidence ${r.confidence}%): ${r.flags.slice(0, 2).join("; ") || "-"}`);
-  }
-  return lines.join("\n");
+export function buildRiskTerminalReport(snap: NoctrunSnapshot): TerminalReport {
+  const risks = snap.rugpullRisks;
+  return {
+    eyebrow: "RISK",
+    title: "RISK ASSESSMENT — TOP FLAGS",
+    found: true,
+    rows: [{ label: "FLAGGED TOKENS", value: String(risks.length), tone: risks.length ? "down" : "up", connected: true }],
+    listItems: risks.slice(0, 8).map((r) => ({
+      primary: `${r.symbol} · ${r.score}/100`,
+      secondary: `Confidence ${r.confidence}% · ${r.flags.slice(0, 2).join("; ") || "-"}`,
+      tone: riskTone(r.score),
+    })),
+    conclusion: risks.length
+      ? "Skor risiko di atas berbasis data DEX (likuiditas, kontrak, distribusi holder) — bukan jaminan aman, tetap DYOR."
+      : "Tidak ada token dengan skor risiko tinggi yang terdeteksi saat ini.",
+  };
 }
 
-export function generateMomentumReport(snap: NoctrunSnapshot): string {
-  if (!snap.pumpCandidates.length) return "📈 Belum ada token di watchlist momentum yang lolos threshold skor saat ini.";
-  const lines = ["📈 **Momentum — High Momentum Watchlist**", ""];
-  for (const c of snap.pumpCandidates.slice(0, 8)) {
-    lines.push(`- ${pumpEmoji(c.score)} ${c.symbol} (${c.score}/100, confidence ${c.confidence}%): ${c.reasons.slice(0, 2).join("; ") || "-"}`);
-  }
-  return lines.join("\n");
+export function buildMomentumTerminalReport(snap: NoctrunSnapshot): TerminalReport {
+  const candidates = snap.pumpCandidates;
+  return {
+    eyebrow: "MOMENTUM",
+    title: "HIGH MOMENTUM WATCHLIST",
+    found: true,
+    rows: [{ label: "CANDIDATES", value: String(candidates.length), tone: candidates.length ? "up" : "neutral", connected: true }],
+    listItems: candidates.slice(0, 8).map((c) => ({
+      primary: `${c.symbol} · ${c.score}/100`,
+      secondary: `Confidence ${c.confidence}% · ${c.reasons.slice(0, 2).join("; ") || "-"}`,
+      tone: momentumTone(c.score),
+    })),
+    conclusion: candidates.length
+      ? "Watchlist di atas lolos threshold skor momentum rule-based — layak diperiksa lebih lanjut, bukan instruksi entry."
+      : "Belum ada token di watchlist momentum yang lolos threshold skor saat ini.",
+  };
 }
 
-export function generateNewsReport(snap: NoctrunSnapshot): string {
-  if (!snap.news.length) return "📰 Tidak ada feed berita aktif saat ini (NEWSAPI_KEY belum di-set, atau rate limit).";
-  const lines = ["📰 **News Impact — Latest**", ""];
-  for (const n of snap.news.slice(0, 8)) {
-    lines.push(`- [${n.sentiment ?? "neutral"}] ${n.title} — ${n.source} (${timeAgo(n.publishedAt)})`);
-  }
-  return lines.join("\n");
+export function buildNewsTerminalReport(snap: NoctrunSnapshot): TerminalReport {
+  const news = snap.news;
+  return {
+    eyebrow: "NEWS",
+    title: "NEWS IMPACT — LATEST",
+    found: true,
+    rows: [],
+    listItems: news.slice(0, 8).map((n) => ({
+      primary: n.title,
+      secondary: `${n.source} · ${timeAgo(n.publishedAt)}`,
+      tone: newsTone(n.sentiment),
+    })),
+    conclusion: news.length ? undefined : "Tidak ada feed berita aktif saat ini (NEWSAPI_KEY belum di-set, atau rate limit).",
+  };
+}
+
+export function buildGreetingTerminalReport(): TerminalReport {
+  return {
+    eyebrow: "AI",
+    title: "ELVOID AI",
+    found: true,
+    rows: [],
+    conclusion:
+      "Halo, saya ElVoid AI — asisten intelijen pasar ELSTAND INTELLIGENCE. Bekerja langsung dari data live (Fear & Greed, whale flow, funding/OI, momentum, risk, news, kalender ekonomi), tanpa model berbayar di baliknya. Coba salah satu prompt cepat di bawah, atau ketik simbol coin.",
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Router: decide what the user is actually asking for.
+// Router: decide what the user is actually asking for. Split into a cheap,
+// synchronous classifier (needs nothing beyond the base snapshot already in
+// hand) so the caller only pays for the heavier cross-asset market-snapshot
+// fetch (sentiment / macro / ETF flow — see marketSnapshotReport.ts) when
+// it's actually a general market question.
 // ---------------------------------------------------------------------------
-export function routeMessage(message: string, snap: NoctrunSnapshot): string {
+export type ChatIntent =
+  | { type: "greeting" }
+  | { type: "coin"; symbol: string }
+  | { type: "whale" }
+  | { type: "risk" }
+  | { type: "momentum" }
+  | { type: "news" }
+  | { type: "market" };
+
+export function classifyChatIntent(message: string, markets: CoinMarket[]): ChatIntent {
   const m = message.toLowerCase().trim();
+  if (/^(hi|halo|hai|hey|hello|p)\b/.test(m) || m.length < 3) return { type: "greeting" };
 
-  if (/^(hi|halo|hai|hey|hello|p)\b/.test(m) || m.length < 3) {
-    return (
-      "Halo, saya ElVoid AI — asisten intelijen pasar untuk ELSTAND INTELLIGENCE. Saya bekerja langsung dari data live " +
-      "(Fear & Greed, whale flow, funding/OI, momentum, risk assessment, news, economic calendar), tanpa model berbayar di baliknya.\n\n" +
-      "Coba tanya:\n- \"analisa ALLO\" (atau simbol lain)\n" +
-      "- \"whale activity hari ini\"\n- \"risk tertinggi apa\"\n- \"momentum sekarang\"\n- \"berita terbaru\"\n- \"ringkasan market\""
-    );
+  const symbol = extractSymbolQuery(message, markets);
+  if (symbol) return { type: "coin", symbol };
+
+  if (/whale/.test(m)) return { type: "whale" };
+  if (/rug|risk|risiko/.test(m)) return { type: "risk" };
+  if (/momentum|pump/.test(m)) return { type: "momentum" };
+  if (/news|berita/.test(m)) return { type: "news" };
+  return { type: "market" };
+}
+
+/**
+ * Handles every intent except "market" (returns null for that one — the
+ * caller builds the richer cross-asset snapshot via
+ * lib/intelligence/marketSnapshotReport.ts, since that needs sources this
+ * function's NoctrunSnapshot argument doesn't carry).
+ */
+export function routeTerminalMessage(message: string, snap: NoctrunSnapshot): TerminalReport | null {
+  const intent = classifyChatIntent(message, snap.markets);
+  switch (intent.type) {
+    case "greeting":
+      return buildGreetingTerminalReport();
+    case "coin":
+      return buildCoinTerminalReport(intent.symbol, snap);
+    case "whale":
+      return buildWhaleTerminalReport(snap);
+    case "risk":
+      return buildRiskTerminalReport(snap);
+    case "momentum":
+      return buildMomentumTerminalReport(snap);
+    case "news":
+      return buildNewsTerminalReport(snap);
+    case "market":
+      return null;
   }
-
-  const symbolQuery = extractSymbolQuery(message, snap.markets);
-  if (symbolQuery) return analyzeCoin(symbolQuery, snap);
-
-  if (/whale/.test(m)) return generateWhaleReport(snap);
-  if (/rug|risk|risiko/.test(m)) return generateRiskReport(snap);
-  if (/momentum|pump/.test(m)) return generateMomentumReport(snap);
-  if (/news|berita/.test(m)) return generateNewsReport(snap);
-
-  return generateMarketSummary(snap);
 }
 
 // ---------------------------------------------------------------------------
-// Structured version of analyzeCoin(), for UI widgets (Token Analyzer) that
-// need to render each section as its own card instead of one markdown blob.
-// Reuses the exact same lookups as analyzeCoin/buildConclusion above, so the
-// numbers never drift between the chat dock and the widget.
+// Structured version of the coin lookup, for UI widgets (Token Analyzer)
+// that need each section as its own field instead of a TerminalReport's
+// row list. Reuses the exact same lookups as buildCoinTerminalReport() /
+// buildConclusion() above, so the numbers never drift between the chat dock
+// and the widget.
 // ---------------------------------------------------------------------------
 export interface CoinReport {
   found: boolean;

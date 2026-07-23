@@ -1,5 +1,21 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.7 — AI Chat + AI Summary jadi terminal beneran (bukan lagi chatbot)
+
+Bagian paling "ChatGPT banget" di seluruh app — chat dock, AI Summary card, dan mobile Ask bar — masih pakai markdown header, `**bold**`, emoji (📊🐋⚠️📈📰💡), dan paragraf panjang di rounded bubble sampai round ini. Padahal Map, Heatmap, Market Pulse, dan AI Final Conclusion semua udah kena gaya terminal dari V2.1–V2.5. Round ini nutup gap itu — fokus ke bagian "AI Response Style", "Terminal Experience", "Error Handling", dan "AI Summary Redesign" di brief V3.
+
+- Tipe baru `TerminalReport` (`lib/terminalReport.ts`) — title + baris label/value + tone + list singkat + conclusion + recommended action + watchlist. Format bersama untuk SEMUA output AI, bukan komponen per komponen.
+- `lib/analysis.ts` dirombak total: semua fungsi yang tadinya nge-generate string markdown+emoji sekarang balikin `TerminalReport`. Matematika/threshold-nya SAMA PERSIS — gak ada logic yang diubah, cuma bentuk output-nya. `buildConclusion()`, `CoinReport`, `getCoinReportData()` (dipakai Token Analyzer widget) sengaja gak disentuh sama sekali biar gak ada risiko break di fitur lain.
+- Komponen baru `components/ui/TerminalReportView.tsx` — satu renderer buat semua card (title bar ala Bloomberg `<GO>`, LiveDot, baris label/value, watchlist, recommended action). Dipakai bareng-bareng oleh AI Summary card DAN chat (dock/panel/mobile bar) — ubah gaya card cukup di satu file.
+- Chat sekarang beneran kerasa terminal: pesan user ditulis `root@elvoid` / `«teks»`, bukan bubble ijo. Loading state siklus "Connecting... → Loading Intelligence... → Checking Macro... → ... → Generating Final Decision..." (urutan persis dari brief), bukan "Thinking…" doang. Kalau fetch lebih lama dari sequence-nya, berhenti di step terakhir — gak ngulang dari awal biar gak kesan buggy. Hormat `prefers-reduced-motion` (langsung ke step terakhir, gak nyicil).
+- Error state juga terminal-style (`root@elvoid` / `ERROR` / alasan / `Retrying...`) — dan "Retrying..." itu BENERAN retry sekali otomatis, bukan teks dekoratif. Kalau gagal lagi baru muncul tombol "Coba lagi" manual.
+- `AISummaryCard.tsx` sekarang render `TerminalReport` yang angkanya sama persis dengan Market Pulse + AI Final Conclusion — dihitung SEKALI di `app/dashboard/page.tsx` (`pulseInputs`, `pulseMetrics`, `finalConclusion`) terus dipakai bertiga, jadi card ini gak mungkin beda pendapat sama panel lain. Field baru yang nambah: Market Cap, BTC Dominance, Fear Index, Funding, Open Interest.
+- `app/api/chat/route.ts` dirombak: klasifikasi intent dulu (murah, gak fetch apa-apa) buat pertanyaan spesifik (coin/whale/risk/momentum/news/greeting) — baru kalau user nanya market secara umum, route ini fetch sentiment/ETF/macro yang SAMA kayak dashboard (`lib/intelligence/marketSnapshotReport.ts`), biar jawaban "ringkasan market" gak pernah beda sama yang ditampilin di halaman utama.
+- Buang field `action`/`open_chart` lama dari response API — ternyata udah 100% redundan sama `report.chartSymbol` yang baru (dua-duanya nunjuk coin yang sama), disederhanain jadi satu jalur.
+- `AskNocturnBar.tsx` (mobile) tadinya punya fetch logic sendiri, terpisah dari `useElVoidChat`. Sekarang dipindah ke hook yang sama biar loading sequence & retry konsisten di 3 tempat (dock, panel, mobile bar), bukan 3 implementasi yang gampang beda-beda sendiri-sendiri.
+
+Belum digarap ronde ini: restyle terminal buat sisa panel (Whale/Institutional Flow, Sector Rotation, Altcoin Scanner masih visual lama dari V1), Settings page redesign, Market Mode masih 4 state bukan 8 (Strong Risk On/Bullish/Bearish/Strong Risk Off belum ada threshold-nya di `deriveGlobalSentiment`), desktop top ribbon belum dicek satu-satu match sama daftar di brief (BTC/ETH/DOM/DXY/GOLD/NASDAQ/FEAR/NEWS).
+
 ## V2.6 — Audit "API di env tapi gak kebaca" + sambungin yang masih stub
 
 Ronde ini fokus ke reliability data, bukan UI. Yang saya temuin & benerin:

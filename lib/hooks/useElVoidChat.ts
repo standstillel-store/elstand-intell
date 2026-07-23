@@ -1,29 +1,68 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { buildGreetingTerminalReport } from "@/lib/analysis";
+import type { TerminalReport } from "@/lib/terminalReport";
 
-export interface ChatAction {
-  type: "open_chart";
-  symbol: string;
+export type ChatMsg =
+  | { role: "user"; text: string }
+  | { role: "assistant"; report: TerminalReport }
+  | { role: "error"; text: string; retrying: boolean };
+
+// V3 brief's terminal loading sequence. Cycled while a fresh request is in
+// flight; holds on the last step if the fetch runs long rather than looping
+// back — a live "still working" read, not a decorative spinner.
+const TERMINAL_LOADING_STEPS = [
+  "Connecting...",
+  "Loading Intelligence...",
+  "Checking Macro...",
+  "Checking News...",
+  "Checking Liquidity...",
+  "Checking ETF...",
+  "Checking Whale...",
+  "Checking Funding...",
+  "Checking Market Structure...",
+  "Generating Final Decision...",
+] as const;
+const STEP_MS = 170;
+
+async function callChatApi(text: string): Promise<TerminalReport> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text }),
+  });
+  const data = await res.json();
+  if (!data?.report) throw new Error("empty response");
+  return data.report as TerminalReport;
 }
-
-export interface ChatMsg {
-  role: "user" | "assistant";
-  text: string;
-  action?: ChatAction;
-}
-
-const GREETING =
-  'Halo, saya ElVoid AI — intelijen pasar ELSTAND, berjalan dari data live. Coba tanya "analisa BTC", "whale activity", "risk tertinggi", "momentum sekarang", atau "berita terbaru".';
 
 /**
- * One hook, two shells — components/AIChatDock.tsx (floating bubble, all
- * pages) and components/right-rail/ElVoidChatPanel.tsx (inline panel, home
- * dashboard) both call this instead of duplicating fetch/state logic.
+ * One hook, three shells — components/AIChatDock.tsx (floating bubble, all
+ * pages), components/right-rail/ElVoidChatPanel.tsx (inline panel, home
+ * dashboard), and components/mobile/AskNocturnBar.tsx all call this instead
+ * of duplicating fetch/loading-sequence/retry logic.
  */
-export function useElVoidChat(context: Record<string, unknown>) {
-  const [msgs, setMsgs] = useState<ChatMsg[]>([{ role: "assistant", text: GREETING }]);
+export function useElVoidChat() {
+  const [msgs, setMsgs] = useState<ChatMsg[]>([{ role: "assistant", report: buildGreetingTerminalReport() }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStep(0);
+      return;
+    }
+    const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setLoadingStep(TERMINAL_LOADING_STEPS.length - 1);
+      return;
+    }
+    const id = setInterval(() => {
+      setLoadingStep((s) => Math.min(s + 1, TERMINAL_LOADING_STEPS.length - 1));
+    }, STEP_MS);
+    return () => clearInterval(id);
+  }, [loading]);
 
   async function send(overrideText?: string) {
     const text = (overrideText ?? input).trim();
@@ -32,19 +71,37 @@ export function useElVoidChat(context: Record<string, unknown>) {
     setInput("");
     setLoading(true);
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, context }),
-      });
-      const data = await res.json();
-      setMsgs((m) => [...m, { role: "assistant", text: data.reply ?? "No response.", action: data.action }]);
+      const report = await callChatApi(text);
+      setMsgs((m) => [...m, { role: "assistant", report }]);
     } catch {
-      setMsgs((m) => [...m, { role: "assistant", text: "Request gagal — cek koneksi atau server logs." }]);
-    } finally {
+      // One honest automatic retry — "Retrying..." only shows while a real
+      // second attempt is actually in flight, never as decoration.
+      setMsgs((m) => [...m, { role: "error", text, retrying: true }]);
       setLoading(false);
+      await new Promise((r) => setTimeout(r, 1400));
+      await retryLast(text);
+      return;
+    }
+    setLoading(false);
+  }
+
+  async function retryLast(text: string) {
+    setMsgs((m) => m.map((msg) => (msg.role === "error" && msg.text === text ? { ...msg, retrying: true } : msg)));
+    try {
+      const report = await callChatApi(text);
+      setMsgs((m) => [...m.filter((msg) => !(msg.role === "error" && msg.text === text)), { role: "assistant", report }]);
+    } catch {
+      setMsgs((m) => m.map((msg) => (msg.role === "error" && msg.text === text ? { ...msg, retrying: false } : msg)));
     }
   }
 
-  return { msgs, input, setInput, loading, send };
+  return {
+    msgs,
+    input,
+    setInput,
+    loading,
+    loadingLabel: TERMINAL_LOADING_STEPS[loadingStep],
+    send,
+    retry: retryLast,
+  };
 }
