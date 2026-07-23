@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { SectionHeader } from "@/components/SectionHeader";
 import { Badge, SideBadge } from "@/components/ui/Badge";
 import { SkeletonCard } from "@/components/ui/Skeleton";
+import { IntelligenceRail } from "./IntelligenceRail";
 import { formatUsd } from "@/lib/format";
 import type { Candle, ScanResult, OrderType, TradeGrade } from "@/lib/elvoid/types";
 import type { ChartLevels } from "./TradingChart";
@@ -382,6 +383,8 @@ export function ChartAnalysisView() {
           )}
         </div>
       </div>
+
+      <IntelligenceRail symbol={symbol} signal={signal} />
     </div>
   );
 }

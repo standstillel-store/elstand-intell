@@ -20,6 +20,12 @@ const TONE_DOT: Record<DisplayTone, "up" | "down" | "amber" | "signal"> = {
   amber: "amber",
   neutral: "signal",
 };
+const TONE_BG: Record<DisplayTone, string> = {
+  up: "bg-up",
+  down: "bg-down",
+  amber: "bg-amber",
+  neutral: "bg-ink-faint",
+};
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -77,6 +83,46 @@ function SectionView({ section }: { section: DrawerSection }) {
             </li>
           ))}
         </ul>
+      </div>
+    );
+  }
+
+  if (section.kind === "chain") {
+    return (
+      <div>
+        <p className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-ink-faint">
+          Reasoning Chain <span className="normal-case text-ink-faint/70">— bukan black box, ini rule-nya</span>
+        </p>
+        <div>
+          {section.steps.map((step) => (
+            <div key={step.node} className="relative pb-3.5 pl-5 last:pb-0">
+              <span
+                className={clsx(
+                  "absolute left-0 top-1 h-3 w-3 rounded-full border-2 border-bg-raised",
+                  step.reasons.length ? TONE_BG[step.tone] : "bg-ink-faint/40"
+                )}
+              />
+              <span className="absolute left-[5px] top-4 h-full w-px bg-line" />
+              <p className="mono-num text-[10px] uppercase tracking-wide text-ink-faint">{step.nodeLabel}</p>
+              {step.reasons.length ? (
+                step.reasons.map((r, j) => (
+                  <p key={j} className={clsx("mt-0.5 text-[12px] leading-snug", TONE_TEXT[step.tone])}>
+                    {r.text}
+                  </p>
+                ))
+              ) : (
+                <p className="mt-0.5 text-[12px] text-ink-faint">Tidak ada sinyal signifikan saat ini</p>
+              )}
+            </div>
+          ))}
+          <div className="relative pl-5">
+            <span className={clsx("absolute left-0 top-1 h-3 w-3 rounded-full", TONE_BG[section.verdict.tone])} />
+            <p className="mono-num text-[10px] uppercase tracking-wide text-signal-glow">AI Conclusion</p>
+            <p className={clsx("mt-0.5 text-[13px] font-semibold", TONE_TEXT[section.verdict.tone])}>
+              {section.verdict.label} · {section.verdict.confidence}% confidence
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

@@ -1,5 +1,7 @@
 import { SectionHeader } from "./SectionHeader";
-import { timeUntil } from "@/lib/format";
+import { ImpactMeter } from "./economic-calendar/ImpactMeter";
+import { CountdownLive } from "./economic-calendar/CountdownLive";
+import { currencyFlag } from "@/lib/format";
 import type { EconomicEvent } from "@/lib/types";
 
 export function EconomicCalendarPanel({ items }: { items: EconomicEvent[] }) {
@@ -12,18 +14,23 @@ export function EconomicCalendarPanel({ items }: { items: EconomicEvent[] }) {
       <ul className="divide-y divide-line">
         {upcoming.map((e, i) => (
           <li key={i} className="flex items-start justify-between gap-3 py-2.5">
+            <span className="mt-0.5 shrink-0 text-base leading-none">{currencyFlag(e.country)}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs uppercase text-ink-faint">{e.country}</span>
-                <span
-                  className={`text-[10px] uppercase ${e.impact === "high" ? "text-down" : "text-amber"}`}
-                >
-                  {e.impact}
-                </span>
+                <ImpactMeter impact={e.impact} />
               </div>
               <p className="text-sm text-ink">{e.title}</p>
+              {(e.forecast || e.previous) && (
+                <p className="mt-0.5 text-[11px] text-ink-faint">
+                  {e.forecast && <>Forecast: {e.forecast} </>}
+                  {e.previous && <>· Previous: {e.previous}</>}
+                </p>
+              )}
             </div>
-            <div className="mono-num shrink-0 text-right text-xs text-ink-muted">{timeUntil(e.date)}</div>
+            <div className="shrink-0 text-right">
+              <CountdownLive date={e.date} />
+            </div>
           </li>
         ))}
       </ul>

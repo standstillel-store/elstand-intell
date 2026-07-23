@@ -37,6 +37,31 @@ export function timeUntil(iso: string): string {
   return `in ${Math.floor(hrs / 24)}d`;
 }
 
+const CURRENCY_FLAG: Record<string, string> = {
+  USD: "🇺🇸", EUR: "🇪🇺", GBP: "🇬🇧", JPY: "🇯🇵", CNY: "🇨🇳", AUD: "🇦🇺",
+  CAD: "🇨🇦", CHF: "🇨🇭", NZD: "🇳🇿", INR: "🇮🇳", KRW: "🇰🇷", IDR: "🇮🇩",
+  BRL: "🇧🇷", MXN: "🇲🇽", ZAR: "🇿🇦", SGD: "🇸🇬", HKD: "🇭🇰", SEK: "🇸🇪",
+  NOK: "🇳🇴", TRY: "🇹🇷",
+};
+
+/** Best-effort flag for a country/currency code as used by the economic calendar feed (e.g. "USD", "EUR"). Falls back to a neutral globe rather than guessing. */
+export function currencyFlag(code: string): string {
+  return CURRENCY_FLAG[code?.toUpperCase()] ?? "🌐";
+}
+
+/** Precise "Xd Xh Xm Xs" countdown for a live-ticking display — timeUntil() above is the coarse one-unit version used in static/server-rendered lists. */
+export function preciseCountdown(iso: string): { text: string; isPast: boolean; isSoon: boolean } {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  if (diffMs <= 0) return { text: "Berlangsung", isPast: true, isSoon: false };
+  const totalSec = Math.floor(diffMs / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const text = d > 0 ? `${d}h ${h}j` : h > 0 ? `${h}j ${m}m` : `${m}m ${s}d`;
+  return { text, isPast: false, isSoon: diffMs < 30 * 60 * 1000 };
+}
+
 export function shortAddr(addr: string): string {
   if (!addr || addr.length < 10) return addr;
   return `${addr.slice(0, 6)}\u2026${addr.slice(-4)}`;

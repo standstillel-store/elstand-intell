@@ -1,5 +1,6 @@
 import type { NewsItem } from "@/lib/types";
-import type { GlobalSentimentReading } from "./globalSentiment";
+import type { GlobalSentimentReading, ReasoningChainStep } from "./globalSentiment";
+import { buildReasoningChain } from "./globalSentiment";
 import type { MacroEventView } from "./macroEvents";
 import type { MarketSeriesReading } from "./sources/twelvedata";
 import type { StocksReading } from "./sources/stocks";
@@ -70,7 +71,8 @@ export type DrawerSection =
   | { kind: "stats"; items: MarketMapMetric[] }
   | { kind: "list"; title: string; items: DrawerListItem[] }
   | { kind: "chart"; label: string; series: number[]; connected: boolean }
-  | { kind: "text"; title: string; body: string };
+  | { kind: "text"; title: string; body: string }
+  | { kind: "chain"; steps: ReasoningChainStep[]; verdict: { label: string; tone: DisplayTone; confidence: number } };
 
 export interface MarketMapNode {
   id: MarketMapNodeId;
@@ -211,10 +213,6 @@ function buildSentimentNode(live: MarketMapLiveInputs): MarketMapNode {
   const tone: DisplayTone = s.status === "risk-on" ? "up" : s.status === "risk-off" ? "down" : s.status === "transition" ? "amber" : "neutral";
   const statusLabel = s.status === "risk-on" ? "Risk On" : s.status === "risk-off" ? "Risk Off" : s.status === "transition" ? "Transition" : "Neutral";
 
-  const reasonItems: DrawerListItem[] = s.reasons.length
-    ? s.reasons.map((r): DrawerListItem => ({ label: r.text, tone: r.direction === 1 ? "up" : "down" }))
-    : [{ label: s.note ?? "Menunggu data dari node lain", tone: "neutral" }];
-
   return {
     id: "sentiment",
     code: "SENT",
@@ -232,7 +230,7 @@ function buildSentimentNode(live: MarketMapLiveInputs): MarketMapNode {
     },
     sections: [
       { kind: "stats", items: [metric("Status", statusLabel, tone, connected), metric("Confidence", `${s.confidence}%`, tone, connected)] },
-      { kind: "list", title: "Reasoning", items: reasonItems },
+      { kind: "chain", steps: buildReasoningChain(s), verdict: { label: statusLabel, tone, confidence: s.confidence } },
     ],
   };
 }

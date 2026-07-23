@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { TokenAnalyzerProvider } from "@/components/token-analyzer/TokenAnalyzerContext";
 import { TokenAnalyzerDrawer } from "@/components/token-analyzer/TokenAnalyzerDrawer";
+import { ThemePreferenceProvider } from "@/components/ThemePreferenceProvider";
 
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const mono = JetBrains_Mono({
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body className="bg-bg text-ink font-sans antialiased">
+        <ThemePreferenceProvider />
         <TokenAnalyzerProvider>
           {children}
           <TokenAnalyzerDrawer />

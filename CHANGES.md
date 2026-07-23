@@ -1,5 +1,19 @@
 # ElStand AI — Market Intelligence Dashboard: apa yang berubah
 
+## V2.8 — Phase 3 slice: Reasoning Chain di Global Sentiment node ("bukan black box")
+
+Developer prompt Phase 3 minta "Rule Engine + Correlation Engine + Confidence Engine + Cross Market Analysis" dengan rantai sebab-akibat News→Sentiment→DXY→Gold→Stocks→Crypto→BTC→ETH→Altcoin→AI Conclusion yang bisa dijelaskan, bukan black box. Itu scope berminggu-minggu kalau digarap literal (butuh correlation engine statistik yang beneran, dan aku gak punya data historis buat validasi itu di sandbox ini — jadi gak digarap, biar gak pura-pura ada rigor statistik yang sebenarnya gak ada).
+
+Yang beneran achievable dan jujur round ini: `deriveGlobalSentiment()` (di `globalSentiment.ts`) TERNYATA sudah jadi rule engine yang tepat — baca 8 sinyal (Fear&Greed, market cap, DXY, Gold, Stocks, BTC, Altcoin, macro event) dan vote jadi satu status + confidence. Masalahnya reasoning-nya cuma keluar sebagai list rata (gak dikelompokkan per node, dan di card ringkasan cuma nongol top-3). Round ini bikin itu jadi chain yang bener-bener bisa diklik & ditelusuri:
+
+- `SentimentReason` sekarang punya field `node` (macro/usd/gold/stocks/crypto/altcoin) — nandain reason itu asalnya dari node mana di peta. Threshold & rumus vote-nya SAMA PERSIS, cuma reason-nya sekarang ditag.
+- Fungsi baru `buildReasoningChain()` — regroup `reasons` (yang tadinya flat) jadi urutan tetap macro → USD → Gold → Stocks → Crypto → Altcoin, tiap node nunjukkin reason-nya sendiri atau "Tidak ada sinyal signifikan saat ini" kalau memang gak ada — gak pernah diisi dummy.
+- `DrawerSection` di `marketMap.ts` punya varian baru `"chain"`, dipasang di node "Global Sentiment" pada Global Intelligence Map — ganti list datar yang lama.
+- `NodeDrawer.tsx` render chain itu sebagai flow vertikal: titik + garis penghubung per node, warna sesuai tone, berakhir di baris "AI Conclusion" (status + confidence). Klik node "Global Sentiment" di peta → langsung keliatan kenapa AI narik kesimpulan itu, node per node.
+- PENTING soal kejujuran desain: ini fan-in (semua node vote paralel ke satu Sentiment), BUKAN pipeline sekuensial (DXY gak benar-benar "menyebabkan" Gold gerak di kode ini). Aku render sebagai flow visual karena itu cara paling gampang dibaca, tapi framing-nya "sinyal-sinyal ini membentuk verdict" bukan "A men-trigger B men-trigger C" — biar gak ngarang causal claim yang gak didukung logic-nya.
+
+Belum digarap: reasoning chain ini baru nempel di node Map doang, belum di-surface ke AI Final Conclusion card atau chat/Market Snapshot (V2.7). "Correlation Engine" versi statistik beneran (korelasi historis antar aset) juga belum — butuh data historis + keputusan soal sumbernya dulu. Sisa Phase 3 (Cross Market Analysis view yang lebih eksplisit, dsb) juga belum disentuh. Phase 4/5/6/7 di developer prompt itu juga masih di luar round ini.
+
 ## V2.7 — AI Chat + AI Summary jadi terminal beneran (bukan lagi chatbot)
 
 Bagian paling "ChatGPT banget" di seluruh app — chat dock, AI Summary card, dan mobile Ask bar — masih pakai markdown header, `**bold**`, emoji (📊🐋⚠️📈📰💡), dan paragraf panjang di rounded bubble sampai round ini. Padahal Map, Heatmap, Market Pulse, dan AI Final Conclusion semua udah kena gaya terminal dari V2.1–V2.5. Round ini nutup gap itu — fokus ke bagian "AI Response Style", "Terminal Experience", "Error Handling", dan "AI Summary Redesign" di brief V3.

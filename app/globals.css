@@ -4,6 +4,39 @@
 
 :root {
   color-scheme: dark;
+  /* Accent color — default "Violet" preset (#6D5DF6 / #A78BFA / #443A99).
+     Settings → Appearance → Accent Color rewrites these three at runtime
+     via ThemePreferenceProvider; every bg-signal/text-signal-glow/etc.
+     class across the app reads from these three variables. */
+  --signal-rgb: 109 93 246;
+  --signal-glow-rgb: 167 139 250;
+  --signal-dim-rgb: 68 58 153;
+}
+
+/* Compact Mode (Settings → Appearance) — tightens the rhythm app-wide
+   without hand-editing padding on every card. Opt-in via [data-density="compact"]
+   on <html>, set by ThemePreferenceProvider from the saved preference. */
+html[data-density="compact"] .panel,
+html[data-density="compact"] .glow-card {
+  padding: 0.75rem !important;
+}
+html[data-density="compact"] main {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+html[data-density="compact"] .space-y-5 > * + * {
+  margin-top: 0.875rem !important;
+}
+
+/* Animations toggle (Settings → Appearance) — a stronger, explicit opt-out
+   layered on top of (not replacing) the OS-level prefers-reduced-motion
+   handled further down. */
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
 
 html,
@@ -135,8 +168,114 @@ body {
 }
 
 .text-gradient-signal {
-  background: linear-gradient(90deg, #8b7bff, #6e5bff 60%);
+  background: linear-gradient(90deg, rgb(var(--signal-glow-rgb)), rgb(var(--signal-rgb)) 60%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* ---- Phase 2 — UI/UX optimization primitives ----------------------- */
+
+/* Faint structural grid for "premium terminal" surfaces (dashboard hero,
+   Settings background). Deliberately subtle — a texture, not a pattern. */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(230, 232, 238, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(230, 232, 238, 0.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+/* Bloomberg-style section separator: a hairline with a mono eyebrow label
+   breaking it, instead of a plain <hr>. */
+.terminal-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: theme("colors.ink.faint");
+}
+.terminal-divider::before,
+.terminal-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, theme("colors.line"), transparent);
+}
+
+/* Generic hover-glow lift for interactive rows/cards that aren't full GlowCards. */
+.hover-glow {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.hover-glow:hover {
+  border-color: rgb(var(--signal-rgb) / 0.4);
+  box-shadow: 0 0 0 1px rgb(var(--signal-rgb) / 0.25), 0 0 18px rgb(var(--signal-glow-rgb) / 0.16);
+  transform: translateY(-1px);
+}
+
+.card-float {
+  animation: cardFloat 4.5s ease-in-out infinite;
+}
+
+/* Circular gauge ring (AI Score / Confidence Meter / Fear&Greed compact).
+   Draw the track in one color and layer an animated arc on top via
+   stroke-dasharray/offset set inline per-instance. */
+.gauge-ring-track {
+  stroke: theme("colors.line");
+  fill: none;
+}
+.gauge-ring-value {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Three-dot "AI is thinking" typing indicator. */
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.typing-dots > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: typingDot 1.2s ease-in-out infinite;
+}
+.typing-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* Tag for any panel showing placeholder/preview data because its real feed
+   isn't connected yet — keeps the "feels alive" panels honest about which
+   numbers are live vs. illustrative, the same way a real trading terminal
+   marks delayed/simulated data instead of quietly showing it as live. */
+.simulated-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 4px;
+  border: 1px solid theme("colors.amber.DEFAULT" / 30%);
+  background: theme("colors.amber.DEFAULT" / 10%);
+  color: theme("colors.amber.DEFAULT");
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+}
+
+/* Thin animated scanline sweep for "Scanning…" states. */
+.scan-sweep {
+  position: relative;
+  overflow: hidden;
+}
+.scan-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent, rgb(var(--signal-rgb) / 0.12), transparent);
+  animation: scanline 2.4s linear infinite;
 }
