@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { scanWatchlist } from "@/lib/elvoid/service";
 import { insertSignals } from "@/lib/elvoid/signals";
 import { getWallet, executeSignal, gradeMeetsThreshold } from "@/lib/elvoid/paperTrader";
+import { chargeEnergy } from "@/lib/energyGate";
 import type { AiSignal } from "@/lib/elvoid/types";
 
 /** AI auto-execute: opt-in via Settings. Only fires for freshly-persisted signals — never for the unsaved-fallback path (no Supabase, nothing to track anyway). */
@@ -18,6 +19,9 @@ async function autoExecuteQualifying(saved: AiSignal[]): Promise<string[]> {
 }
 
 export async function POST() {
+  const blocked = await chargeEnergy(3, "ai_signal_scan");
+  if (blocked) return blocked;
+
   try {
     const generated = await scanWatchlist();
     const saved = await insertSignals(generated);

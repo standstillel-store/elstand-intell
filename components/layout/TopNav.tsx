@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Search, Settings, BookOpen, ChevronDown, CircleUser } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, Settings, BookOpen, ChevronDown, CircleUser, Zap, Wallet as WalletIcon, LogOut, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import { useTokenAnalyzer } from "@/components/token-analyzer/TokenAnalyzerContext";
 import { AlertsBell } from "@/components/alerts/AlertsBell";
-import { formatUsd, formatPct } from "@/lib/format";
+import { formatUsd, formatPct, timeUntil, shortAddr } from "@/lib/format";
+import { createSupabaseBrowserClient } from "@/lib/auth/client";
+import { WALLET_TYPE_LABEL, type WalletType } from "@/lib/wallet/connectors";
 
 interface TickerRow {
   symbol: string;
@@ -13,7 +16,16 @@ interface TickerRow {
   change24h: number | null;
 }
 
+interface MeResponse {
+  signedIn: boolean;
+  user?: { email: string } | null;
+  profile?: { username: string | null; avatarUrl: string | null } | null;
+  energy?: { balance: number; nextResetAt: string } | null;
+  wallet?: { wallet_address: string; wallet_type: WalletType; chain_id: number } | null;
+}
+
 export function TopNav() {
+  const router = useRouter();
   const { open } = useTokenAnalyzer();
   const [query, setQuery] = useState("");
   const [ticker, setTicker] = useState<TickerRow[]>([
@@ -23,6 +35,32 @@ export function TopNav() {
   ]);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const [me, setMe] = useState<MeResponse | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/account/me")
+      .then((r) => (r.ok ? r.json() : { signedIn: false }))
+      .then(setMe)
+      .catch(() => setMe({ signedIn: false }));
+  }, []);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // createSupabaseBrowserClient() throws if Supabase Auth isn't
+      // configured — nothing to sign out of in that case, fall through to
+      // the redirect below regardless.
+    } finally {
+      setLoggingOut(false);
+      setProfileOpen(false);
+      router.push("/login");
+      router.refresh();
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -100,19 +138,90 @@ export function TopNav() {
           <div ref={profileRef} className="relative">
             <button
               onClick={() => setProfileOpen((v) => !v)}
-              className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-ink-muted hover:border-signal/40 hover:text-ink"
+              className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-ink-muted hover:border-signal/40 hover:text-ink"
             >
-              <CircleUser size={16} />
+              {me?.profile?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external Google avatar URL
+                <img src={me.profile.avatarUrl} alt="" className="h-6 w-6 rounded-full" referrerPolicy="no-referrer" />
+              ) : (
+                <CircleUser size={18} />
+              )}
               <ChevronDown size={12} className={clsx("transition-transform", profileOpen && "rotate-180")} />
             </button>
             {profileOpen && (
-              <div className="absolute right-0 top-[calc(100%+6px)] w-48 rounded-md border border-line bg-bg-raised py-1 shadow-2xl shadow-black/40">
-                <Link href="/settings" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
-                  <Settings size={14} /> Settings
-                </Link>
-                <Link href="/methodology" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
-                  <BookOpen size={14} /> Methodology
-                </Link>
+              <div className="absolute right-0 top-[calc(100%+6px)] w-72 rounded-md border border-line bg-bg-raised py-1.5 shadow-2xl shadow-black/40">
+                {me?.signedIn ? (
+                  <>
+                    <div className="flex items-center gap-2.5 px-3 py-2.5">
+                      {me.profile?.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={me.profile.avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-full border border-line" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-bg-surface text-ink-faint">
+                          <CircleUser size={18} />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{me.profile?.username || "Trader"}</p>
+                        <p className="truncate text-xs text-ink-faint">{me.user?.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 border-y border-line px-3 py-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5 text-ink-muted">
+                          <Zap size={12} className="text-signal-glow" /> AI Energy
+                        </span>
+                        <span className="mono-num text-ink">
+                          {me.energy ? `${me.energy.balance} / 10` : "—"}
+                          {me.energy && <span className="ml-1 text-ink-faint">· reset {timeUntil(me.energy.nextResetAt)}</span>}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5 text-ink-muted">
+                          <WalletIcon size={12} /> Wallet
+                        </span>
+                        {me.wallet ? (
+                          <span className="mono-num flex items-center gap-1 text-ink">
+                            <span className="h-1.5 w-1.5 rounded-full bg-up" />
+                            {WALLET_TYPE_LABEL[me.wallet.wallet_type]} · {shortAddr(me.wallet.wallet_address)}
+                          </span>
+                        ) : (
+                          <Link href="/settings#wallet" className="text-ink-faint underline decoration-line underline-offset-2 hover:text-ink-muted">
+                            Not connected
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+
+                    <Link href="/settings" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
+                      <Settings size={14} /> Settings
+                    </Link>
+                    <Link href="/methodology" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
+                      <BookOpen size={14} /> Methodology
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      disabled={loggingOut}
+                      className="flex w-full items-center gap-2 border-t border-line px-3 py-2 text-left text-sm text-ink-muted hover:bg-down/10 hover:text-down disabled:opacity-50"
+                    >
+                      {loggingOut ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
+                      {loggingOut ? "Signing out…" : "Logout"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/settings" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
+                      <Settings size={14} /> Settings
+                    </Link>
+                    <Link href="/methodology" className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted hover:bg-bg-surface hover:text-ink">
+                      <BookOpen size={14} /> Methodology
+                    </Link>
+                    <Link href="/login" className="flex items-center gap-2 border-t border-line px-3 py-2 text-sm text-signal-glow hover:bg-bg-surface">
+                      <CircleUser size={14} /> Sign in with Google
+                    </Link>
+                  </>
+                )}
               </div>
             )}
           </div>

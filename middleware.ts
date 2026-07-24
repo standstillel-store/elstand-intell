@@ -70,11 +70,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
+  // Phase 3 UX requirement: a signed-in user never sees the landing page
+  // again — clicking the ELSTAND logo (or any bookmark/link back to "/")
+  // always lands on the Dashboard instead. Anonymous visitors (and search
+  // crawlers, which never carry the session cookie) still see the real
+  // marketing page — this only fires when `user` is set above.
+  if (user && pathname === "/") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
   return response;
 }
 
 export const config = {
   matcher: [
+    "/",
     "/dashboard/:path*",
     "/ai-signal/:path*",
     "/ai-performance/:path*",

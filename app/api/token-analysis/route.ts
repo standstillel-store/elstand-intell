@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSnapshot } from "@/lib/snapshot";
 import { getCoinReportData } from "@/lib/analysis";
+import { chargeEnergy } from "@/lib/energyGate";
 
 // Powers the mobile "Token Analyzer" widget. Reuses the exact same snapshot
 // and lookup logic as the AI chat dock's "analisa <SYMBOL>" flow — same
@@ -12,6 +13,9 @@ export async function GET(req: Request) {
   if (!q) {
     return NextResponse.json({ error: "missing_query" }, { status: 400 });
   }
+
+  const blocked = await chargeEnergy(1, "token_analysis");
+  if (blocked) return blocked;
 
   try {
     const snapshot = await getSnapshot();

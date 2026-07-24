@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildScanContext, buildSignalForSymbol } from "@/lib/elvoid/service";
 import { listSignals, insertSignal } from "@/lib/elvoid/signals";
+import { chargeEnergy } from "@/lib/energyGate";
 import type { SignalStatus } from "@/lib/elvoid/types";
 
 export async function GET(req: Request) {
@@ -24,6 +25,9 @@ export async function POST(req: Request) {
   const coin = (body.coin ?? "").trim();
   if (!coin) return NextResponse.json({ error: "Sertakan simbol coin, misalnya BTC." }, { status: 400 });
   const timeframe = body.timeframe ?? "4h";
+
+  const blocked = await chargeEnergy(1, "ai_signal_generate");
+  if (blocked) return blocked;
 
   try {
     const ctx = await buildScanContext();

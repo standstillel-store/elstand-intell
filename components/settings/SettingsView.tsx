@@ -1,10 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { PaperWallet } from "@/lib/elvoid/types";
+import type { AppUser, AppProfile } from "@/lib/auth/profile";
 import { GeneralSection } from "./sections/GeneralSection";
+import { AccountSection } from "./sections/AccountSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { AiEngineSection } from "./sections/AiEngineSection";
+import { AiEnergySection } from "./sections/AiEnergySection";
 import { PaperTradingSection } from "./sections/PaperTradingSection";
+import { WalletSection } from "./sections/WalletSection";
 import { ApiIntegrationSection } from "./sections/ApiIntegrationSection";
 import { SecuritySection } from "./sections/SecuritySection";
 import { AdvancedSection } from "./sections/AdvancedSection";
@@ -17,7 +21,15 @@ interface Status {
   fred: boolean;
 }
 
-export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) {
+export function SettingsView({
+  initialWallet,
+  account,
+  profile,
+}: {
+  initialWallet: PaperWallet;
+  account: AppUser | null;
+  profile: AppProfile | null;
+}) {
   const [wallet, setWallet] = useState(initialWallet);
   const [riskInput, setRiskInput] = useState(String(initialWallet.risk_per_trade));
   const [autoExecute, setAutoExecute] = useState(initialWallet.auto_execute);
@@ -111,6 +123,7 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
       </div>
 
       <GeneralSection />
+      <AccountSection account={account} profile={profile} />
       <AppearanceSection />
       <AiEngineSection
         autoExecute={autoExecute}
@@ -127,6 +140,7 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
         saving={saving}
         saved={saved}
       />
+      <AiEnergySection />
       <PaperTradingSection
         wallet={wallet}
         riskInput={riskInput}
@@ -138,6 +152,7 @@ export function SettingsView({ initialWallet }: { initialWallet: PaperWallet }) 
         saving={saving}
         saved={saved}
       />
+      <WalletSection />
       <ApiIntegrationSection status={status} />
       <SecuritySection />
       <AdvancedSection wallet={wallet} />

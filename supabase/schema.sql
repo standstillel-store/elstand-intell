@@ -320,3 +320,319 @@ alter table bn_position_meta enable row level security;
 alter table bn_auto_trader_settings enable row level security;
 alter table bn_auto_trader_log enable row level security;
 alter table bn_emergency_stop enable row level security;
+
+-- ============================================================================
+-- Phase 3 — Authentication & User System
+-- ============================================================================
+-- Adds a genuinely per-user layer on top of Supabase Auth's own auth.users
+-- (populated by "Continue with Google" — see lib/auth/*, app/login/page.tsx,
+-- app/auth/callback/route.ts). Everything below uses REAL Row Level Security
+-- policies keyed off auth.uid(), which is the opposite RLS posture from
+-- every table above: those are single-tenant singletons (id = 1, no user_id
+-- at all) read/written only by the server via SUPABASE_SERVICE_ROLE_KEY, so
+-- "RLS enabled with zero policies" was the correct way to lock the anon key
+-- out entirely. These new tables are the opposite case — actual per-user
+-- data the browser's own anon-key session is supposed to read/write, scoped
+-- to auth.uid() — so real ownership policies are what "Supabase RLS" means
+-- here.
+--
+-- NOT included: paper_wallet is NOT migrated to a per-user table here, even
+-- though the Phase 3 brief lists it alongside users/profile/wallet/device/
+-- ai_token/settings/activity_log. paper_wallet (plus ai_signals, ai_journal,
+-- ai_statistics — the rest of the Paper Trader engine it can't be separated
+-- from) is currently one shared singleton by design, wired through
+-- lib/elvoid/paperTrader.ts and every /api/paper-trader/* route. Adding a
+-- user_id column to paper_wallet alone, without also migrating ai_signals/
+-- ai_journal/ai_statistics and every route + component that reads them,
+-- would produce a half-migrated feature (a personal balance sitting on top
+-- of trade history that's still shared by everyone) — worse than what
+-- exists today. That's a real, separate project (touches the whole trading
+-- engine, not just auth), so it isn't done silently as a side effect of
+-- this migration. See the chat reply this schema shipped with for the full
+-- explanation; happy to scope that as its own phase on request.
+-- ----------------------------------------------------------------------------
+-- users / profiles — one row each per auth.users row, created and refreshed
+-- on every login (see lib/auth/profile.ts -> upsertUserProfile(), called
+-- from app/auth/callback/route.ts). Two tables because the brief asked for
+-- both by name: `users` is the auth-adjacent identity/activity record,
+-- `profiles` is the display-facing extension (username/avatar). In practice
+-- they're 1:1 and always written together — kept separate so `profiles`
+-- could later grow public-readable columns (e.g. a public profile page)
+-- without ever exposing anything from `users`.
+-- ----------------------------------------------------------------------------
+create table if not exists users (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  created_at timestamptz not null default now(),
+  last_login_at timestamptz,
+  last_active_at timestamptz
+);
+
+create table if not exists profiles (
+  user_id uuid primary key references users (id) on delete cascade,
+  username text,
+  avatar_url text,
+  updated_at timestamptz not null default now()
+);
+
+alter table users enable row level security;
+alter table profiles enable row level security;
+
+drop policy if exists users_select_own on users;
+create policy users_select_own on users for select using (auth.uid() = id);
+drop policy if exists users_insert_own on users;
+create policy users_insert_own on users for insert with check (auth.uid() = id);
+drop policy if exists users_update_own on users;
+create policy users_update_own on users for update using (auth.uid() = id) with check (auth.uid() = id);
+
+drop policy if exists profiles_select_own on profiles;
+create policy profiles_select_own on profiles for select using (auth.uid() = user_id);
+drop policy if exists profiles_insert_own on profiles;
+create policy profiles_insert_own on profiles for insert with check (auth.uid() = user_id);
+drop policy if exists profiles_update_own on profiles;
+create policy profiles_update_own on profiles for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- wallets — connected EVM wallets (MetaMask, Rabby, OKX Wallet, Coinbase
+-- Wallet, or anything reachable via WalletConnect — see lib/web3/config.ts).
+-- Ownership is proven with a signed-message challenge BEFORE a row is ever
+-- written (app/api/wallet/verify/route.ts) — this table never sees a
+-- private key or mnemonic, only a public address plus the one-time
+-- signature that proved control of it at connect time. wallet_address is
+-- globally unique on purpose (not just unique per-user): once verified, one
+-- address should never be able to sit "connected" under two accounts at once.
+-- ----------------------------------------------------------------------------
+create table if not exists wallets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  wallet_address text not null,
+  wallet_type text not null check (wallet_type in ('metamask', 'rabby', 'okx', 'coinbase', 'walletconnect', 'other')),
+  chain_id integer not null,
+  verified boolean not null default false,
+  first_connected_at timestamptz not null default now(),
+  last_connected_at timestamptz not null default now(),
+  constraint wallets_address_unique unique (wallet_address)
+);
+
+create index if not exists wallets_user_id_idx on wallets (user_id);
+
+alter table wallets enable row level security;
+drop policy if exists wallets_select_own on wallets;
+create policy wallets_select_own on wallets for select using (auth.uid() = user_id);
+drop policy if exists wallets_insert_own on wallets;
+create policy wallets_insert_own on wallets for insert with check (auth.uid() = user_id);
+drop policy if exists wallets_update_own on wallets;
+create policy wallets_update_own on wallets for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists wallets_delete_own on wallets;
+create policy wallets_delete_own on wallets for delete using (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- devices — a login HISTORY, not a live session table. Being direct about a
+-- real limit: Supabase Auth doesn't expose a client-safe "list every active
+-- session by device and revoke just this one" API. The real primitives are
+-- supabase.auth.signOut({ scope }) with 'local' (this device only), 'others'
+-- (every OTHER device), or 'global' (all devices) — which is what Settings >
+-- Security actually calls. This table lets that screen show *where* logins
+-- came from (device/browser/OS, first seen, last seen) without pretending
+-- to offer per-device revoke that the underlying auth system doesn't support.
+-- ----------------------------------------------------------------------------
+create table if not exists devices (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  device_label text not null,
+  user_agent text,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  constraint devices_user_label_unique unique (user_id, device_label)
+);
+
+create index if not exists devices_user_id_idx on devices (user_id, last_seen_at desc);
+
+alter table devices enable row level security;
+drop policy if exists devices_select_own on devices;
+create policy devices_select_own on devices for select using (auth.uid() = user_id);
+drop policy if exists devices_insert_own on devices;
+create policy devices_insert_own on devices for insert with check (auth.uid() = user_id);
+drop policy if exists devices_update_own on devices;
+create policy devices_update_own on devices for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- ai_token / ai_token_transactions — "AI Energy". 10 free, refilled by
+-- checking last_reset_at every time balance is read or spent (lib/energy.ts)
+-- rather than a cron job — correct whether someone opens the app once an
+-- hour or once a week, and needs no extra scheduled infrastructure. Every
+-- grant/spend appends a row to ai_token_transactions, so the balance is
+-- always independently reconstructable from the log, not just trusted.
+-- ----------------------------------------------------------------------------
+create table if not exists ai_token (
+  user_id uuid primary key references users (id) on delete cascade,
+  balance integer not null default 10,
+  last_reset_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint ai_token_balance_non_negative check (balance >= 0)
+);
+
+create table if not exists ai_token_transactions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  delta integer not null,               -- negative = spend, positive = grant / daily reset
+  reason text not null,                 -- e.g. "chat", "ai_signal_scan", "chart_analysis", "daily_reset"
+  balance_after integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ai_token_transactions_user_id_idx on ai_token_transactions (user_id, created_at desc);
+
+alter table ai_token enable row level security;
+alter table ai_token_transactions enable row level security;
+
+drop policy if exists ai_token_select_own on ai_token;
+create policy ai_token_select_own on ai_token for select using (auth.uid() = user_id);
+drop policy if exists ai_token_insert_own on ai_token;
+create policy ai_token_insert_own on ai_token for insert with check (auth.uid() = user_id);
+drop policy if exists ai_token_update_own on ai_token;
+create policy ai_token_update_own on ai_token for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists ai_token_tx_select_own on ai_token_transactions;
+create policy ai_token_tx_select_own on ai_token_transactions for select using (auth.uid() = user_id);
+drop policy if exists ai_token_tx_insert_own on ai_token_transactions;
+create policy ai_token_tx_insert_own on ai_token_transactions for insert with check (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- user_settings — account-level toggles that Phase 3 itself introduces
+-- (security/wallet notifications, plus a jsonb escape hatch for whatever
+-- Phase 4 needs without another migration). NOT the same thing as the
+-- existing General/Appearance preferences already in Settings (language,
+-- timezone, currency, theme) — those stay local-only via usePreferences()
+-- (lib/hooks/usePreferences.ts, browser localStorage) on purpose, to avoid
+-- folding an unrelated, already-working system into this migration.
+-- ----------------------------------------------------------------------------
+create table if not exists user_settings (
+  user_id uuid primary key references users (id) on delete cascade,
+  security_alerts boolean not null default true,
+  wallet_notifications boolean not null default true,
+  extra jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table user_settings enable row level security;
+drop policy if exists user_settings_select_own on user_settings;
+create policy user_settings_select_own on user_settings for select using (auth.uid() = user_id);
+drop policy if exists user_settings_insert_own on user_settings;
+create policy user_settings_insert_own on user_settings for insert with check (auth.uid() = user_id);
+drop policy if exists user_settings_update_own on user_settings;
+create policy user_settings_update_own on user_settings for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- activity_log — append-only audit trail (login, logout, wallet_connected,
+-- wallet_disconnected, energy_spent, settings_changed, account_delete_requested,
+-- ...). Same spirit as bn_auto_trader_log above: never overwritten, always
+-- additive, and it's what a future "recent activity" list in Settings reads.
+-- ----------------------------------------------------------------------------
+create table if not exists activity_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  event_type text not null,
+  metadata jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists activity_log_user_id_idx on activity_log (user_id, created_at desc);
+
+alter table activity_log enable row level security;
+drop policy if exists activity_log_select_own on activity_log;
+create policy activity_log_select_own on activity_log for select using (auth.uid() = user_id);
+drop policy if exists activity_log_insert_own on activity_log;
+create policy activity_log_insert_own on activity_log for insert with check (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- Payment preparation (brief section 7) — schema only, nothing writes to
+-- these yet and no payment logic is wired up anywhere ("Jangan implementasi
+-- pembayaran dulu"). payment_provider / transaction_status are small
+-- reference/lookup tables (seeded below, everything inactive) so the real
+-- tables get a proper foreign key instead of a bare check constraint that
+-- would need editing in three places every time a provider/status is added.
+-- ----------------------------------------------------------------------------
+create table if not exists payment_provider (
+  provider_code text primary key,
+  label text not null,
+  is_active boolean not null default false
+);
+
+insert into payment_provider (provider_code, label, is_active) values
+  ('stripe', 'Stripe', false),
+  ('midtrans', 'Midtrans', false),
+  ('crypto', 'Crypto (on-chain top-up)', false)
+on conflict (provider_code) do nothing;
+
+create table if not exists transaction_status (
+  status_code text primary key,
+  label text not null
+);
+
+insert into transaction_status (status_code, label) values
+  ('pending', 'Pending'),
+  ('completed', 'Completed'),
+  ('failed', 'Failed'),
+  ('refunded', 'Refunded'),
+  ('cancelled', 'Cancelled')
+on conflict (status_code) do nothing;
+
+create table if not exists payment_history (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  provider_code text references payment_provider (provider_code),
+  status_code text not null default 'pending' references transaction_status (status_code),
+  amount numeric not null,
+  currency text not null default 'USD',
+  external_reference text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists topup_history (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  provider_code text references payment_provider (provider_code),
+  status_code text not null default 'pending' references transaction_status (status_code),
+  amount numeric not null,
+  currency text not null default 'USD',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists wallet_topup (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users (id) on delete cascade,
+  wallet_id uuid references wallets (id) on delete set null,
+  amount numeric not null,
+  currency text not null default 'USD',
+  tx_hash text,
+  status_code text not null default 'pending' references transaction_status (status_code),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists payment_history_user_id_idx on payment_history (user_id, created_at desc);
+create index if not exists topup_history_user_id_idx on topup_history (user_id, created_at desc);
+create index if not exists wallet_topup_user_id_idx on wallet_topup (user_id, created_at desc);
+
+alter table payment_provider enable row level security;
+alter table transaction_status enable row level security;
+alter table payment_history enable row level security;
+alter table topup_history enable row level security;
+alter table wallet_topup enable row level security;
+
+-- Reference tables: readable by any signed-in user, writable by no one from the client.
+drop policy if exists payment_provider_read_all on payment_provider;
+create policy payment_provider_read_all on payment_provider for select using (auth.role() = 'authenticated');
+drop policy if exists transaction_status_read_all on transaction_status;
+create policy transaction_status_read_all on transaction_status for select using (auth.role() = 'authenticated');
+
+-- Own-rows-only, SELECT ONLY from the client — nothing writes to these three
+-- yet since no payment logic exists. Phase 4's payment routes will write via
+-- the service-role key, the same way ai_signals/paper_wallet already do,
+-- which bypasses RLS by design (see the note near the top of this file).
+drop policy if exists payment_history_select_own on payment_history;
+create policy payment_history_select_own on payment_history for select using (auth.uid() = user_id);
+drop policy if exists topup_history_select_own on topup_history;
+create policy topup_history_select_own on topup_history for select using (auth.uid() = user_id);
+drop policy if exists wallet_topup_select_own on wallet_topup;
+create policy wallet_topup_select_own on wallet_topup for select using (auth.uid() = user_id);

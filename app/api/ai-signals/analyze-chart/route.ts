@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildScanContext, buildSignalForSymbol } from "@/lib/elvoid/service";
+import { chargeEnergy } from "@/lib/energyGate";
 
 const VALID_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
@@ -12,6 +13,9 @@ export async function GET(req: Request) {
   if (!VALID_INTERVALS.includes(timeframe)) {
     return NextResponse.json({ error: `timeframe harus salah satu dari: ${VALID_INTERVALS.join(", ")}.` }, { status: 400 });
   }
+
+  const blocked = await chargeEnergy(1, "chart_analysis");
+  if (blocked) return blocked;
 
   try {
     const ctx = await buildScanContext();

@@ -3,9 +3,12 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
   SlidersHorizontal,
+  CircleUser,
   Palette,
   Cpu,
+  Zap,
   Wallet,
+  WalletCards,
   Plug,
   ShieldCheck,
   Wrench,
@@ -14,9 +17,12 @@ import {
 
 export const SETTINGS_SECTIONS = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "account", label: "Account", icon: CircleUser },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "ai-engine", label: "AI Engine", icon: Cpu },
+  { id: "ai-energy", label: "AI Energy", icon: Zap },
   { id: "paper-trading", label: "Paper Trading", icon: Wallet },
+  { id: "wallet", label: "Wallet", icon: WalletCards },
   { id: "api-integration", label: "API Integration", icon: Plug },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "advanced", label: "Advanced", icon: Wrench },

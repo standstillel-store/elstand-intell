@@ -25,9 +25,11 @@ If you plan to share this with other people:
 - **ElVoid AI Paper Trader never touches real funds and is never connected
   to a real exchange.** It's a simulation with a virtual wallet — keep it
   that way if you extend it. **Portfolio** is the same paper wallet viewed
-  through an allocation lens, not a real wallet-connect integration.
-  **Live Trading is a separate feature** (see below) that does place real
-  orders against Binance Testnet or Live — don't confuse the two pages.
+  through an allocation lens — it does not read from the EVM wallets users
+  can connect under Settings → Wallet (Phase 3); those exist purely for
+  account/identity verification, not trading. **Live Trading is a separate
+  feature** (see below) that does place real orders against Binance
+  Testnet or Live — don't confuse the three.
 - The rugpull-risk heuristic is a starting point (liquidity ratios, pool
   age, whale exits, negative news), not a security audit. Always tell users
   to verify independently (check contract, liquidity lock, team, audits).
@@ -172,6 +174,108 @@ in-process lock so two near-simultaneous requests can't double an entry.
   AI Auto Trading tabs show a clear "Futures only" note instead of
   attempting something that doesn't apply to Spot — balances, market data,
   and manual order placement/cancellation work fully either way.
+
+## Authentication, Wallet Connect & AI Energy (Phase 3)
+
+ELSTAND has a real per-user account system on top of the Paper Trader
+above — Google sign-in, EVM wallet linking, and a daily AI Energy
+allowance. This section is the reference for how each piece works —
+one-time setup steps are under [Setup](#setup) below.
+
+### Authentication
+
+- **Google OAuth via Supabase Auth** — "Continue with Google" on the
+  landing page (`app/login/page.tsx`) → Google consent → Supabase →
+  `app/auth/callback/route.ts` exchanges the code for a session, upserts
+  this user's `users`/`profiles`/`ai_token`/`user_settings` rows
+  (`lib/auth/profile.ts`), logs the device + login (`lib/activityLog.ts`),
+  then hands off to a brief `/auth/success` animation before landing on
+  `/dashboard` — never back on the landing page.
+- `middleware.ts` guards every real route (`/dashboard`, `/settings`,
+  etc.) and also redirects an already-signed-in visitor away from `/` and
+  `/login` straight to `/dashboard`.
+- Without `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  configured, auth is skipped entirely and every route stays open — fine
+  for local dev, not for a real deployment.
+
+### Session
+
+Session persistence is handled by `@supabase/ssr`'s **cookie-based**
+client (`lib/auth/client.ts`, `lib/auth/server.ts`) — not localStorage.
+That means:
+- Refreshing the page, closing the tab, or restarting the browser never
+  logs you out. `middleware.ts` calls `supabase.auth.getUser()` on every
+  request, which transparently refreshes an expiring access token using
+  the refresh token already in that cookie.
+- The only ways a session actually ends: **Logout** (this device only —
+  `scope: "local"`), **Logout All Devices** (`scope: "global"`), or
+  natural refresh-token expiry — all under Settings → Security, and in
+  the TopNav profile dropdown for the simple case.
+- There's no separate "remember me" toggle because there's nothing to
+  toggle — every session persists by default.
+
+### Wallet Connect
+
+Reown AppKit + wagmi (`lib/web3/config.ts`, mounted once at the true app
+root in `app/layout.tsx` so every page can use it without re-wiring
+providers) — MetaMask, Rabby, and OKX Wallet are auto-detected injected
+wallets (EIP-6963), Coinbase Wallet has its own connector, and
+WalletConnect covers everything else (mobile wallets via QR). One
+integration, five wallets, no per-wallet SDK.
+
+Connecting a wallet always goes through a **sign-to-verify** step
+(`lib/wallet/verify.ts`) before anything is saved: the browser asks the
+wallet to sign a short challenge message, and the server recovers the
+signer address from that signature (viem's `recoverMessageAddress`, no
+RPC call needed) and confirms it matches the address being saved. This is
+a lightweight custom scheme, not full EIP-4361 (SIWE) — good enough for
+"prove you own this address before we save it"; swap in the `siwe`
+package if this ever needs to gate something higher-stakes.
+
+**Nothing that isn't a public address is ever stored or requested** — no
+private key, no mnemonic, no seed phrase, anywhere in this flow.
+
+### AI Energy
+
+- 10 free per day, per account (`ai_token` table).
+- Refilled lazily: the balance is checked and reset (if 24h have passed
+  since the last reset) every time it's *read or spent*
+  (`lib/energy.ts`) — no cron job, correct whether someone opens the app
+  once an hour or once a week.
+- Every grant/spend is appended to `ai_token_transactions`, visible under
+  Settings → AI Energy.
+- Wired into every route that does real AI analysis work
+  (`lib/energyGate.ts`): AI Chat (1), single-symbol AI Signal (1), full
+  watchlist scan (3), Chart Analysis (1), Token Analyzer (1). Metering is
+  *skipped*, not blocked, when Supabase Auth isn't configured or nobody's
+  signed in — same graceful-degradation rule as every other optional
+  integration in this app.
+
+### Database
+
+All of the above lives in a clearly-delimited "Phase 3" section appended
+to the bottom of `supabase/schema.sql` — run once, same SQL Editor step
+as the Paper Trader tables above (it's all one file):
+`users`, `profiles`, `wallets`, `devices`, `ai_token` +
+`ai_token_transactions`, `user_settings`, `activity_log`, plus
+payment-prep tables (`payment_history`, `topup_history`, `wallet_topup`,
+`payment_provider`, `transaction_status` — schema only, no payment logic
+wired up anywhere yet, on purpose).
+
+Unlike `ai_signals` / `ai_journal` / `ai_statistics` / `paper_wallet`
+above (single-tenant singletons — RLS enabled with **zero** public
+policies, service-role key only), every Phase 3 table uses **real
+per-user RLS** (`auth.uid() = user_id`): the anon key can read/write
+exactly one person's own rows, nothing else.
+
+**Paper Wallet Multi-User will be handled in Phase 3.5, not here.**
+`paper_wallet` (and the rest of the Paper Trader engine it can't be
+separated from — `ai_signals`, `ai_journal`, `ai_statistics`) stays the
+single shared singleton it already is. Migrating it to be per-user means
+touching the whole trading engine and every route/component that reads
+it, not just adding a `user_id` column — a real, separate project, not a
+side effect of the auth migration. See the comment block at the top of
+the Phase 3 section in `schema.sql` for the full reasoning.
 
 ## What's new in the AI Trading Terminal upgrade (2026-07, part 2)
 
@@ -320,6 +424,46 @@ The service-role key is used **server-side only** (Route Handlers / Server
 Components) and bypasses Row Level Security by design — never expose it to
 the browser or use the anon key for these tables. See the RLS note at the
 bottom of `supabase/schema.sql`.
+
+### Setting up Authentication & Wallet Connect (Phase 3)
+
+Same `supabase/schema.sql` file as above already has the Phase 3 tables —
+if you ran step 2 above, the account system's database side is done.
+What's left is turning on Google as a login provider and (optionally)
+getting a Wallet Connect Project ID.
+
+**1. Google sign-in:**
+1. In Google Cloud Console (console.cloud.google.com) → APIs & Services →
+   Credentials → **Create OAuth client ID** → Application type "Web
+   application".
+2. Add an Authorized redirect URI pointing at Supabase:
+   `https://<your-project-ref>.supabase.co/auth/v1/callback`.
+3. In Supabase: Authentication → Providers → **Google** → enable it, paste
+   the Client ID + Client Secret from step 1.
+4. In Supabase: Authentication → URL Configuration → add your app's own
+   callback to Redirect URLs — `http://localhost:3000/auth/callback` for
+   local dev, plus your real domain's `/auth/callback` once deployed.
+5. Add `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Settings → API → anon/public key —
+   safe to ship to the browser) to `.env.local`.
+
+**2. Wallet Connect (optional — MetaMask/Rabby/OKX/Coinbase/WalletConnect):**
+1. Go to https://cloud.reown.com and sign in — it's free, no credit card.
+   ("Reown" is the current name for WalletConnect/Web3Modal; same company,
+   same dashboard.)
+2. Create a project, pick **AppKit** as the product.
+3. Copy the **Project ID** into `.env.local`:
+   ```
+   NEXT_PUBLIC_REOWN_PROJECT_ID=your-project-id
+   ```
+4. Under that project's settings, add your domain(s) — `localhost:3000`
+   for local dev, your real domain once deployed — to the allowed domain
+   list, or the connect modal will refuse to open.
+5. Without this key, Settings → Wallet just shows "not configured"
+   instead of erroring — everything else keeps working normally.
+
+Restart `npm run dev` after either step. See
+[Authentication, Wallet Connect & AI Energy (Phase 3)](#authentication-wallet-connect--ai-energy-phase-3)
+above for how each piece behaves once it's on.
 
 ### Optional: FRED for DXY & M2
 
@@ -475,5 +619,9 @@ scanners, or adjust thresholds.
   distance) rather than fixed lot sizes — realistic for comparing setups,
   but doesn't model slippage, fees, or partial fills beyond the TP1→breakeven
   rule.
-- **Portfolio** reflects the paper-trading wallet only — there's no real
-  exchange or on-chain wallet-connect integration in this app.
+- **Portfolio** reflects the paper-trading wallet only — it's unrelated to
+  the EVM Wallet Connect in Settings (Phase 3, for account verification),
+  and there's still no real exchange or on-chain integration behind
+  Portfolio/Paper Trader itself. See
+  [Authentication, Wallet Connect & AI Energy](#authentication-wallet-connect--ai-energy-phase-3)
+  above.

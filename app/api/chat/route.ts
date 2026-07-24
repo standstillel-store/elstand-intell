@@ -11,6 +11,7 @@ import { getGoldReading } from "@/lib/intelligence/sources/gold";
 import { getStocksReading } from "@/lib/intelligence/sources/stocks";
 import { getNextHighImpactEvent } from "@/lib/intelligence/macroEvents";
 import { isRelevantAsset } from "@/lib/asset-filters";
+import { chargeEnergy } from "@/lib/energyGate";
 import type { TerminalReport } from "@/lib/terminalReport";
 
 interface ChatBody {
@@ -41,6 +42,9 @@ export async function POST(req: Request) {
       report: errorReport('Tanya sesuatu dulu — misalnya "analisa BTC" atau "whale activity".', "AI"),
     });
   }
+
+  const blocked = await chargeEnergy(1, "chat");
+  if (blocked) return blocked;
 
   try {
     const snap = await getDashboardSnapshot();
